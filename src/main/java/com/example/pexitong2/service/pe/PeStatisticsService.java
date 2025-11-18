@@ -292,4 +292,189 @@ public class PeStatisticsService {
         
         return count > 0 ? Math.round(sum / count * 100.0) / 100.0 : 0.0;
     }
+    
+    /**
+     * 获取校级管理员阳光跑统计数据（按院系统计）
+     */
+    public SunshineRunStatisticsResponse getSchoolSunshineRunStatistics(String adminUserId) {
+        // 验证权限
+        User admin = pePermissionService.getUser(adminUserId);
+        if (admin.getUserType() != User.UserType.school_admin && 
+            admin.getUserType() != User.UserType.super_admin) {
+            throw new RuntimeException("权限不足，只有校级管理员可以查看统计数据");
+        }
+        
+        String school = admin.getSchool();
+        
+        SunshineRunStatisticsResponse response = new SunshineRunStatisticsResponse();
+        response.setSchool(school);
+        response.setScope("全校");
+        
+        // 获取本校所有学生
+        List<PeUser> schoolStudents = peUserRepository.findBySchool(school);
+        response.setTotalStudents(schoolStudents.size());
+        
+        // 计算整体统计
+        SunshineRunStatisticsResponse.SunshineRunAggregate overallAggregate = calculateSunshineRunAggregate(schoolStudents);
+        response.setOverall(overallAggregate);
+        
+        // 按院系分组统计
+        Map<String, List<PeUser>> collegeGroups = schoolStudents.stream()
+            .filter(student -> student.getCollege() != null && !student.getCollege().isEmpty())
+            .collect(Collectors.groupingBy(PeUser::getCollege));
+        
+        List<SunshineRunStatisticsResponse.GroupStatistics> groupStats = new ArrayList<>();
+        List<SunshineRunStatisticsResponse.GroupRanking> groupRankings = new ArrayList<>();
+        
+        for (Map.Entry<String, List<PeUser>> entry : collegeGroups.entrySet()) {
+            String collegeName = entry.getKey();
+            List<PeUser> collegeStudents = entry.getValue();
+            
+            SunshineRunStatisticsResponse.SunshineRunAggregate collegeAggregate = calculateSunshineRunAggregate(collegeStudents);
+            
+            // 院系统计
+            SunshineRunStatisticsResponse.GroupStatistics groupStat = new SunshineRunStatisticsResponse.GroupStatistics(
+                collegeName, collegeStudents.size(), collegeAggregate
+            );
+            groupStats.add(groupStat);
+            
+            // 院系排名（按人均跑步距离排名）
+            SunshineRunStatisticsResponse.GroupRanking ranking = new SunshineRunStatisticsResponse.GroupRanking(
+                0, collegeName, collegeAggregate.getAvgDistancePerStudent(), collegeAggregate
+            );
+            groupRankings.add(ranking);
+        }
+        
+        // 按人均跑步距离排序
+        groupRankings.sort((a, b) -> Double.compare(b.getAvgDistancePerStudent(), a.getAvgDistancePerStudent()));
+        for (int i = 0; i < groupRankings.size(); i++) {
+            groupRankings.get(i).setRank(i + 1);
+        }
+        
+        response.setGroupStats(groupStats);
+        response.setGroupRankings(groupRankings);
+        
+        return response;
+    }
+    
+    /**
+     * 获取院级管理员阳光跑统计数据（按班级统计）
+     * 校级管理员访问时返回全校所有班级的数据
+     * 院级管理员访问时只返回本院的数据
+     */
+    public SunshineRunStatisticsResponse getCollegeSunshineRunStatistics(String adminUserId) {
+        // 验证权限
+        User admin = pePermissionService.getUser(adminUserId);
+        if (admin.getUserType() != User.UserType.department_admin && 
+            admin.getUserType() != User.UserType.school_admin && 
+            admin.getUserType() != User.UserType.super_admin) {
+            throw new RuntimeException("权限不足，只有院级管理员及以上可以查看院系统计数据");
+        }
+        
+        String school = admin.getSchool();
+        
+        SunshineRunStatisticsResponse response = new SunshineRunStatisticsResponse();
+        response.setSchool(school);
+        
+        List<PeUser> targetStudents;
+        
+        // 根据管理员类型确定数据范围
+        if (admin.getUserType() == User.UserType.school_admin || admin.getUserType() == User.UserType.super_admin) {
+            // 校级管理员：获取全校学生数据
+            targetStudents = peUserRepository.findBySchool(school);
+            response.setScope("全校所有院系");
+        } else {
+            // 院级管理员：获取本院学生数据
+            String college = admin.getDepartmentName(); // 院级管理员的department_name对应院系
+            targetStudents = peUserRepository.findBySchoolAndCollege(school, college);
+            response.setScope(college);
+        }
+        
+        response.setTotalStudents(targetStudents.size());
+        
+        // 计算整体统计
+        SunshineRunStatisticsResponse.SunshineRunAggregate overallAggregate = calculateSunshineRunAggregate(targetStudents);
+        response.setOverall(overallAggregate);
+        
+        // 按班级分组统计（如果是校级管理员，会包含所有院系的所有班级）
+        Map<String, List<PeUser>> classGroups = targetStudents.stream()
+            .filter(student -> student.getClassName() != null && !student.getClassName().isEmpty())
+            .collect(Collectors.groupingBy(PeUser::getClassName));
+        
+        List<SunshineRunStatisticsResponse.GroupStatistics> groupStats = new ArrayList<>();
+        List<SunshineRunStatisticsResponse.GroupRanking> groupRankings = new ArrayList<>();
+        
+        for (Map.Entry<String, List<PeUser>> entry : classGroups.entrySet()) {
+            String className = entry.getKey();
+            List<PeUser> classStudents = entry.getValue();
+            
+            SunshineRunStatisticsResponse.SunshineRunAggregate classAggregate = calculateSunshineRunAggregate(classStudents);
+            
+            // 班级统计
+            SunshineRunStatisticsResponse.GroupStatistics groupStat = new SunshineRunStatisticsResponse.GroupStatistics(
+                className, classStudents.size(), classAggregate
+            );
+            groupStats.add(groupStat);
+            
+            // 班级排名（按人均跑步距离排名）
+            SunshineRunStatisticsResponse.GroupRanking ranking = new SunshineRunStatisticsResponse.GroupRanking(
+                0, className, classAggregate.getAvgDistancePerStudent(), classAggregate
+            );
+            groupRankings.add(ranking);
+        }
+        
+        // 按人均跑步距离排序
+        groupRankings.sort((a, b) -> Double.compare(b.getAvgDistancePerStudent(), a.getAvgDistancePerStudent()));
+        for (int i = 0; i < groupRankings.size(); i++) {
+            groupRankings.get(i).setRank(i + 1);
+        }
+        
+        response.setGroupStats(groupStats);
+        response.setGroupRankings(groupRankings);
+        
+        return response;
+    }
+    
+    /**
+     * 计算阳光跑汇总数据
+     */
+    private SunshineRunStatisticsResponse.SunshineRunAggregate calculateSunshineRunAggregate(List<PeUser> students) {
+        if (students.isEmpty()) {
+            return new SunshineRunStatisticsResponse.SunshineRunAggregate(0L, 0L, 0L, 0.0, 0.0, 0.0);
+        }
+        
+        long totalRuns = 0;
+        long totalDistance = 0;  // 米
+        long totalDuration = 0;  // 秒
+        
+        for (PeUser student : students) {
+            Integer runs = student.getSunshineTotalRuns();
+            Double distance = student.getSunshineTotalDistance();
+            Long duration = student.getSunshineTotalDuration();
+            
+            if (runs != null) {
+                totalRuns += runs;
+            }
+            
+            // 距离：从小数转换为整数米（82.77310080397267 -> 82）
+            if (distance != null) {
+                totalDistance += distance.longValue();
+            }
+            
+            // 时长：从毫秒转换为秒（15657 -> 15）
+            if (duration != null) {
+                totalDuration += duration / 1000;
+            }
+        }
+        
+        int studentCount = students.size();
+        double avgRuns = Math.round((double) totalRuns / studentCount * 100.0) / 100.0;
+        double avgDistance = Math.round((double) totalDistance / studentCount * 100.0) / 100.0;
+        double avgDuration = Math.round((double) totalDuration / studentCount * 100.0) / 100.0;
+        
+        return new SunshineRunStatisticsResponse.SunshineRunAggregate(
+            totalRuns, totalDistance, totalDuration,
+            avgRuns, avgDistance, avgDuration
+        );
+    }
 }

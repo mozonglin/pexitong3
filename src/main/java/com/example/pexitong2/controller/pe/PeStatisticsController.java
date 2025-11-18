@@ -79,6 +79,43 @@ public class PeStatisticsController {
     }
     
     /**
+     * 获取校级管理员阳光跑统计数据（按院系统计和排名）
+     */
+    @GetMapping("/sunshine-run/school")
+    public PeApiResponse<SunshineRunStatisticsResponse> getSchoolSunshineRunStatistics(
+            @RequestHeader("Authorization") String token) {
+        
+        try {
+            String currentUserId = getCurrentUserId(token);
+            SunshineRunStatisticsResponse statistics = peStatisticsService.getSchoolSunshineRunStatistics(currentUserId);
+            
+            return PeApiResponse.success("获取成功", statistics);
+            
+        } catch (Exception e) {
+            return PeApiResponse.error(e.getMessage());
+        }
+    }
+    
+    /**
+     * 获取院级管理员阳光跑统计数据（按班级统计和排名）
+     * 校级管理员访问时返回全校所有班级的数据
+     */
+    @GetMapping("/sunshine-run/college")
+    public PeApiResponse<SunshineRunStatisticsResponse> getCollegeSunshineRunStatistics(
+            @RequestHeader("Authorization") String token) {
+        
+        try {
+            String currentUserId = getCurrentUserId(token);
+            SunshineRunStatisticsResponse statistics = peStatisticsService.getCollegeSunshineRunStatistics(currentUserId);
+            
+            return PeApiResponse.success("获取成功", statistics);
+            
+        } catch (Exception e) {
+            return PeApiResponse.error(e.getMessage());
+        }
+    }
+    
+    /**
      * 从Token中获取当前用户ID
      */
     private String getCurrentUserId(String token) {

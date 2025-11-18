@@ -44,6 +44,15 @@ public class PeUser {
     @Column(name = "morning_exercise_points", nullable = false)
     private Integer morningExercisePoints = 0;
     
+    @Column(name = "sunshine_total_runs", nullable = false)
+    private Integer sunshineTotalRuns = 0;
+    
+    @Column(name = "sunshine_total_distance")
+    private Double sunshineTotalDistance = 0.0;
+    
+    @Column(name = "sunshine_total_duration")
+    private Long sunshineTotalDuration = 0L;
+    
     @Column(name = "study_hours", nullable = false)
     private Integer studyHours = 0;
     
@@ -114,6 +123,15 @@ public class PeUser {
     
     public Integer getMorningExercisePoints() { return morningExercisePoints; }
     public void setMorningExercisePoints(Integer morningExercisePoints) { this.morningExercisePoints = morningExercisePoints; }
+    
+    public Integer getSunshineTotalRuns() { return sunshineTotalRuns; }
+    public void setSunshineTotalRuns(Integer sunshineTotalRuns) { this.sunshineTotalRuns = sunshineTotalRuns; }
+    
+    public Double getSunshineTotalDistance() { return sunshineTotalDistance; }
+    public void setSunshineTotalDistance(Double sunshineTotalDistance) { this.sunshineTotalDistance = sunshineTotalDistance; }
+    
+    public Long getSunshineTotalDuration() { return sunshineTotalDuration; }
+    public void setSunshineTotalDuration(Long sunshineTotalDuration) { this.sunshineTotalDuration = sunshineTotalDuration; }
     
     public Integer getStudyHours() { return studyHours; }
     public void setStudyHours(Integer studyHours) { this.studyHours = studyHours; }
