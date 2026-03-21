@@ -4,6 +4,7 @@ import com.example.pexitong2.dto.ApiResponse;
 import com.example.pexitong2.dto.ObservationResponse;
 import com.example.pexitong2.dto.StatisticsResponse;
 import com.example.pexitong2.entity.User;
+import com.example.pexitong2.repository.ListeningObservationRepository;
 import com.example.pexitong2.repository.UserRepository;
 import com.example.pexitong2.service.ListeningObservationService;
 import com.example.pexitong2.util.JwtUtil;
@@ -31,6 +32,9 @@ public class AdminStatisticsController {
     
     @Autowired
     private ListeningObservationService observationService;
+    
+    @Autowired
+    private ListeningObservationRepository observationRepository;
     
     @Autowired
     private UserRepository userRepository;
@@ -144,11 +148,38 @@ public class AdminStatisticsController {
             
             // 院系统计数据（基于department_name）
             List<StatisticsResponse.DepartmentStatistics> departmentStats = new ArrayList<>();
-            // 简化版本：可以通过查询users表的department_name来获取院系统计
-            // 这里先返回空列表，可以后续扩展
             
-            // TODO: 实现基于department_name的统计查询
-            // 例如：SELECT department_name, COUNT(*) FROM users WHERE user_type='teacher' GROUP BY department_name
+            // 按院系统计听课记录数
+            List<Object[]> deptObsCounts = observationService.getObservationCountByDepartmentName();
+            Map<String, Long> obsCountMap = new HashMap<>();
+            for (Object[] row : deptObsCounts) {
+                String deptName = (String) row[0];
+                Long count = (Long) row[1];
+                obsCountMap.put(deptName, count);
+            }
+            
+            // 按院系统计评价文件数和视频文件数
+            List<Object[]> deptEvalCounts = observationRepository.countEvaluationFilesByDepartmentName();
+            Map<String, Long> evalCountMap = new HashMap<>();
+            for (Object[] row : deptEvalCounts) {
+                evalCountMap.put((String) row[0], (Long) row[1]);
+            }
+            
+            List<Object[]> deptVideoCounts = observationRepository.countVideoFilesByDepartmentName();
+            Map<String, Long> videoCountMap = new HashMap<>();
+            for (Object[] row : deptVideoCounts) {
+                videoCountMap.put((String) row[0], (Long) row[1]);
+            }
+            
+            // 合并各院系统计
+            for (String deptName : obsCountMap.keySet()) {
+                StatisticsResponse.DepartmentStatistics ds = new StatisticsResponse.DepartmentStatistics();
+                ds.setDepartmentName(deptName);
+                ds.setObservationCount(obsCountMap.getOrDefault(deptName, 0L));
+                ds.setEvaluationFiles(evalCountMap.getOrDefault(deptName, 0L));
+                ds.setVideoFiles(videoCountMap.getOrDefault(deptName, 0L));
+                departmentStats.add(ds);
+            }
             
             stats.setDepartmentStats(departmentStats);
             

@@ -174,6 +174,52 @@ public class PeUserService {
     }
     
     /**
+     * 强制登出（清除登录状态）
+     */
+    @Transactional
+    public void forceLogout(String userId, String currentUserId) {
+        permissionService.validatePeManagementPermission(currentUserId);
+        PeUser user = peUserRepository.findById(userId)
+            .orElseThrow(() -> new RuntimeException("用户不存在"));
+        String allowedSchool = permissionService.getAllowedSchool(currentUserId);
+        String allowedCollege = permissionService.getAllowedCollege(currentUserId);
+        if (allowedSchool != null && !allowedSchool.equals(user.getSchool())) {
+            throw new RuntimeException("权限不足：无法操作该用户");
+        }
+        if (allowedCollege != null && !allowedCollege.equals(user.getCollege())) {
+            throw new RuntimeException("权限不足：无法操作该用户");
+        }
+        user.setIsLoggedIn(false);
+        peUserRepository.save(user);
+    }
+
+    /**
+     * 修改手机号
+     */
+    @Transactional
+    public void updatePhone(String userId, String newPhone, String currentUserId) {
+        permissionService.validatePeManagementPermission(currentUserId);
+        PeUser user = peUserRepository.findById(userId)
+            .orElseThrow(() -> new RuntimeException("用户不存在"));
+        String allowedSchool = permissionService.getAllowedSchool(currentUserId);
+        String allowedCollege = permissionService.getAllowedCollege(currentUserId);
+        if (allowedSchool != null && !allowedSchool.equals(user.getSchool())) {
+            throw new RuntimeException("权限不足：无法操作该用户");
+        }
+        if (allowedCollege != null && !allowedCollege.equals(user.getCollege())) {
+            throw new RuntimeException("权限不足：无法操作该用户");
+        }
+        // 检查手机号是否已被其他用户使用
+        peUserRepository.findByPhoneNumber(newPhone).ifPresent(existing -> {
+            if (!existing.getId().equals(userId)) {
+                throw new RuntimeException("该手机号已被其他用户使用");
+            }
+        });
+        user.setPhoneNumber(newPhone);
+        peUserRepository.save(user);
+    }
+
+    /**
      * 获取用户统计数据
      */
     public StatisticsResponse.UserStatistics getUserStatistics(String currentUserId) {

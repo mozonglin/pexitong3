@@ -12,11 +12,15 @@ public class PeUserResponse {
     private String studentId;
     private String school;
     private String college;
+    private String className;
     private String phoneNumber;
     private String avatar;
     private Integer points;
     private Integer peActivityPoints;
     private Integer morningExercisePoints;
+    private Integer sunshineTotalRuns;
+    private Double sunshineTotalDistance;
+    private Long sunshineTotalDuration;
     private Integer studyHours;
     private Integer integrityScore;
     private String role;
@@ -39,11 +43,15 @@ public class PeUserResponse {
         this.studentId = user.getStudentId();
         this.school = user.getSchool();
         this.college = user.getCollege();
+        this.className = user.getClassName();
         this.phoneNumber = user.getPhoneNumber();
         this.avatar = user.getAvatar();
         this.points = user.getPoints();
         this.peActivityPoints = user.getPeActivityPoints();
         this.morningExercisePoints = user.getMorningExercisePoints();
+        this.sunshineTotalRuns = user.getSunshineTotalRuns();
+        this.sunshineTotalDistance = user.getSunshineTotalDistance();
+        this.sunshineTotalDuration = user.getSunshineTotalDuration();
         this.studyHours = user.getStudyHours();
         this.integrityScore = user.getIntegrityScore();
         this.role = user.getRole() != null ? user.getRole().name() : null;
@@ -68,7 +76,10 @@ public class PeUserResponse {
     
     public String getCollege() { return college; }
     public void setCollege(String college) { this.college = college; }
-    
+
+    public String getClassName() { return className; }
+    public void setClassName(String className) { this.className = className; }
+
     public String getPhoneNumber() { return phoneNumber; }
     public void setPhoneNumber(String phoneNumber) { this.phoneNumber = phoneNumber; }
     
@@ -83,7 +94,16 @@ public class PeUserResponse {
     
     public Integer getMorningExercisePoints() { return morningExercisePoints; }
     public void setMorningExercisePoints(Integer morningExercisePoints) { this.morningExercisePoints = morningExercisePoints; }
-    
+
+    public Integer getSunshineTotalRuns() { return sunshineTotalRuns; }
+    public void setSunshineTotalRuns(Integer sunshineTotalRuns) { this.sunshineTotalRuns = sunshineTotalRuns; }
+
+    public Double getSunshineTotalDistance() { return sunshineTotalDistance; }
+    public void setSunshineTotalDistance(Double sunshineTotalDistance) { this.sunshineTotalDistance = sunshineTotalDistance; }
+
+    public Long getSunshineTotalDuration() { return sunshineTotalDuration; }
+    public void setSunshineTotalDuration(Long sunshineTotalDuration) { this.sunshineTotalDuration = sunshineTotalDuration; }
+
     public Integer getStudyHours() { return studyHours; }
     public void setStudyHours(Integer studyHours) { this.studyHours = studyHours; }
     

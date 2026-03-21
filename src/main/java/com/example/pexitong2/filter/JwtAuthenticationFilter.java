@@ -56,10 +56,11 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 String userId = jwtUtil.extractUserId(jwt);
                 
                 SimpleGrantedAuthority authority = new SimpleGrantedAuthority(userType);
+                // principal 和 details 都设为 userId
+                // - auth.getName() 返回 userId（TrainingController 用）
+                // - authentication.getDetails() 返回 userId（UserController/AdminController 用）
                 UsernamePasswordAuthenticationToken authToken = 
-                    new UsernamePasswordAuthenticationToken(username, null, Collections.singletonList(authority));
-                
-                // 将用户ID添加到认证对象的详细信息中
+                    new UsernamePasswordAuthenticationToken(userId, null, Collections.singletonList(authority));
                 authToken.setDetails(userId);
                 SecurityContextHolder.getContext().setAuthentication(authToken);
             }

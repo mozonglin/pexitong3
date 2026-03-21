@@ -114,6 +114,43 @@ public class PeUserController {
     }
     
     /**
+     * 强制登出（重置登录状态）
+     */
+    @PostMapping("/{id}/force-logout")
+    public PeApiResponse<Void> forceLogout(
+            @PathVariable String id,
+            @RequestHeader("Authorization") String token) {
+        try {
+            String currentUserId = getCurrentUserId(token);
+            userService.forceLogout(id, currentUserId);
+            return PeApiResponse.success("已强制登出", null);
+        } catch (Exception e) {
+            return PeApiResponse.error(e.getMessage());
+        }
+    }
+
+    /**
+     * 修改手机号
+     */
+    @PutMapping("/{id}/phone")
+    public PeApiResponse<Void> updatePhone(
+            @PathVariable String id,
+            @RequestBody java.util.Map<String, String> body,
+            @RequestHeader("Authorization") String token) {
+        try {
+            String currentUserId = getCurrentUserId(token);
+            String newPhone = body.get("phoneNumber");
+            if (newPhone == null || newPhone.isBlank()) {
+                return PeApiResponse.error("手机号不能为空");
+            }
+            userService.updatePhone(id, newPhone, currentUserId);
+            return PeApiResponse.success("手机号修改成功", null);
+        } catch (Exception e) {
+            return PeApiResponse.error(e.getMessage());
+        }
+    }
+
+    /**
      * 从Token中获取当前用户ID
      */
     private String getCurrentUserId(String token) {
