@@ -4,8 +4,10 @@ import com.example.pexitong2.dto.equipment.*;
 import com.example.pexitong2.entity.Equipment;
 import com.example.pexitong2.entity.EquipmentAdjustment;
 import com.example.pexitong2.entity.EquipmentCategory;
+import com.example.pexitong2.entity.User;
 import com.example.pexitong2.repository.EquipmentAdjustmentRepository;
 import com.example.pexitong2.repository.EquipmentRepository;
+import com.example.pexitong2.repository.UserRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -30,35 +32,43 @@ public class EquipmentManagementService {
     
     @Autowired
     private EquipmentCategoryService categoryService;
+
+    @Autowired
+    private UserRepository userRepository;
+
+    private String getUserSchool(String userId) {
+        return userRepository.findById(userId)
+                .map(User::getSchool)
+                .orElse(null);
+    }
     
     /**
-     * 获取器材列表（支持分页和筛选）
+     * 获取器材列表（支持分页和筛选，按学校隔离）
      */
-    public EquipmentPageResponse getEquipmentList(Integer page, Integer limit, String categoryId, 
-                                                  String keyword, String status) {
-        // 参数验证和默认值设置
+    public EquipmentPageResponse getEquipmentList(Integer page, Integer limit, String categoryId,
+                                                  String keyword, String status, String operatorId) {
         if (page == null || page < 1) page = 1;
         if (limit == null || limit < 1) limit = 10;
         if (limit > 100) limit = 100;
         
         Pageable pageable = PageRequest.of(page - 1, limit, Sort.by("createdAt").descending());
-        
+        String school = getUserSchool(operatorId);
+
         Page<Equipment> equipmentPage;
-        
-        // 根据筛选条件查询
-        if ((categoryId != null && !categoryId.isEmpty()) || 
-            (keyword != null && !keyword.isEmpty()) || 
-            (status != null && !status.isEmpty() && !status.equals("all"))) {
-            equipmentPage = equipmentRepository.findWithFilters(categoryId, keyword, status, pageable);
+        if (school != null) {
+            equipmentPage = equipmentRepository.findBySchoolWithFilters(
+                    school,
+                    (categoryId != null && !categoryId.isEmpty()) ? categoryId : null,
+                    (keyword != null && !keyword.isEmpty()) ? keyword : null,
+                    (status != null && !status.isEmpty() && !status.equals("all")) ? status : null,
+                    pageable);
         } else {
-            equipmentPage = equipmentRepository.findByIsDeletedFalse(pageable);
+            equipmentPage = equipmentRepository.findWithFilters(categoryId, keyword, status, pageable);
         }
         
-        // 转换为响应DTO
         List<EquipmentResponse> equipmentResponses = equipmentPage.getContent().stream()
                 .map(equipment -> {
                     EquipmentResponse response = new EquipmentResponse(equipment);
-                    // 设置分类名称
                     EquipmentCategory category = categoryService.getCategoryById(equipment.getCategoryId());
                     if (category != null) {
                         response.setCategoryName(category.getName());
@@ -67,7 +77,6 @@ public class EquipmentManagementService {
                 })
                 .collect(Collectors.toList());
         
-        // 构建分页信息
         EquipmentPageResponse.Pagination pagination = new EquipmentPageResponse.Pagination(
                 equipmentPage.getTotalElements(), page, limit);
         
@@ -96,6 +105,7 @@ public class EquipmentManagementService {
         equipment.setPurchaseDate(request.getPurchaseDate());
         equipment.setWarrantyPeriod(request.getWarrantyPeriod());
         equipment.setStorageLocation(request.getStorageLocation());
+        equipment.setSchool(getUserSchool(operatorId));
         equipment.setCreatedBy(operatorId);
         
         Equipment savedEquipment = equipmentRepository.save(equipment);

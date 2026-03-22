@@ -104,6 +104,23 @@ public interface EquipmentRepository extends JpaRepository<Equipment, String> {
      */
     @Query("SELECT e FROM Equipment e WHERE e.isDeleted = false ORDER BY e.borrowedQuantity DESC")
     List<Equipment> findPopularEquipment(Pageable pageable);
+
+    // ===== 按学校过滤的查询 =====
+
+    Page<Equipment> findBySchoolAndIsDeletedFalse(String school, Pageable pageable);
+
+    @Query("SELECT e FROM Equipment e WHERE e.isDeleted = false AND e.school = :school " +
+           "AND (:categoryId IS NULL OR e.categoryId = :categoryId) " +
+           "AND (:keyword IS NULL OR LOWER(e.name) LIKE LOWER(CONCAT('%', :keyword, '%')) OR " +
+           "     LOWER(e.model) LIKE LOWER(CONCAT('%', :keyword, '%'))) " +
+           "AND (CASE WHEN :status = 'available' THEN e.availableQuantity > 0 " +
+           "     WHEN :status = 'shortage' THEN e.availableQuantity <= 5 " +
+           "     ELSE true END)")
+    Page<Equipment> findBySchoolWithFilters(@Param("school") String school,
+                                           @Param("categoryId") String categoryId,
+                                           @Param("keyword") String keyword,
+                                           @Param("status") String status,
+                                           Pageable pageable);
 }
 
 

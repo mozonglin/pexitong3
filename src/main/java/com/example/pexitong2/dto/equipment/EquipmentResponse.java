@@ -46,6 +46,8 @@ public class EquipmentResponse {
     
     @JsonProperty("storage_location")
     private String storageLocation;
+
+    private String school;
     
     @JsonProperty("created_by")
     private String createdBy;
@@ -75,6 +77,7 @@ public class EquipmentResponse {
         this.purchaseDate = equipment.getPurchaseDate();
         this.warrantyPeriod = equipment.getWarrantyPeriod();
         this.storageLocation = equipment.getStorageLocation();
+        this.school = equipment.getSchool();
         this.createdBy = equipment.getCreatedBy();
         this.createdAt = equipment.getCreatedAt();
         this.updatedAt = equipment.getUpdatedAt();
@@ -86,6 +89,9 @@ public class EquipmentResponse {
     }
     
     // Getters and Setters
+    public String getSchool() { return school; }
+    public void setSchool(String school) { this.school = school; }
+
     public String getId() { return id; }
     public void setId(String id) { this.id = id; }
     

@@ -70,7 +70,7 @@ public class EquipmentController {
             permissionService.validateEquipmentManagementPermission(userId);
             
             EquipmentPageResponse result = equipmentService.getEquipmentList(
-                    page, limit, categoryId, keyword, status);
+                    page, limit, categoryId, keyword, status, userId);
             return ResponseEntity.ok(ApiResponse.success("获取成功", result));
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(ApiResponse.error(e.getMessage()));

@@ -128,22 +128,28 @@ public class HomeworkStatisticsController {
             // ① 汇总：有作业记录的学生数 + 各运动类型总次数
             String sumSql =
                 "SELECT COUNT(*) AS totalStudents, " +
-                "SUM(u.total_squat)     AS totalSquat, " +
-                "SUM(u.total_sit_up)    AS totalSitUp, " +
-                "SUM(u.total_push_up)   AS totalPushUp, " +
-                "SUM(u.total_pull_up)   AS totalPullUp, " +
-                "SUM(u.total_jump_rope) AS totalJumpRope " +
+                "SUM(u.total_squat)        AS totalSquat, " +
+                "SUM(u.total_sit_up)       AS totalSitUp, " +
+                "SUM(u.total_push_up)      AS totalPushUp, " +
+                "SUM(u.total_pull_up)      AS totalPullUp, " +
+                "SUM(u.total_jump_rope)    AS totalJumpRope, " +
+                "SUM(u.total_jumping_jack) AS totalJumpingJack, " +
+                "SUM(u.total_high_knees)   AS totalHighKnees " +
                 "FROM users1 u WHERE " + where +
                 " AND (u.total_squat + u.total_sit_up + u.total_push_up" +
-                "      + u.total_pull_up + u.total_jump_rope) > 0";
+                "      + u.total_pull_up + u.total_jump_rope" +
+                "      + u.total_jumping_jack + u.total_high_knees) > 0";
             Map<String, Object> sums = jdbcTemplate.queryForMap(sumSql, params);
 
-            long totalSquat    = toLong(sums.get("totalSquat"));
-            long totalSitUp    = toLong(sums.get("totalSitUp"));
-            long totalPushUp   = toLong(sums.get("totalPushUp"));
-            long totalPullUp   = toLong(sums.get("totalPullUp"));
-            long totalJumpRope = toLong(sums.get("totalJumpRope"));
-            long totalReps     = totalSquat + totalSitUp + totalPushUp + totalPullUp + totalJumpRope;
+            long totalSquat       = toLong(sums.get("totalSquat"));
+            long totalSitUp       = toLong(sums.get("totalSitUp"));
+            long totalPushUp      = toLong(sums.get("totalPushUp"));
+            long totalPullUp      = toLong(sums.get("totalPullUp"));
+            long totalJumpRope    = toLong(sums.get("totalJumpRope"));
+            long totalJumpingJack = toLong(sums.get("totalJumpingJack"));
+            long totalHighKnees   = toLong(sums.get("totalHighKnees"));
+            long totalReps        = totalSquat + totalSitUp + totalPushUp + totalPullUp
+                                  + totalJumpRope + totalJumpingJack + totalHighKnees;
 
             // ② 今日 / 本周提交次数（需要时间维度，join homework_scores）
             //    将 where 中的别名 u. 替换为 u1. 以匹配 join 后的别名
@@ -163,14 +169,16 @@ public class HomeworkStatisticsController {
                 "WHERE YEARWEEK(h.timestamp, 1) = YEARWEEK(CURDATE(), 1) AND " + joinWhere;
             Map<String, Object> week = jdbcTemplate.queryForMap(weekSql, params);
 
-            // ③ 各运动类型分布（从 users1 聚合，5 次小查询）
+            // ③ 各运动类型分布（从 users1 聚合）
             List<Map<String, Object>> typeStats = new ArrayList<>();
             String[][] types = {
-                {"SQUAT",     "total_squat"},
-                {"SIT_UP",    "total_sit_up"},
-                {"PUSH_UP",   "total_push_up"},
-                {"PULL_UP",   "total_pull_up"},
-                {"JUMP_ROPE", "total_jump_rope"},
+                {"SQUAT",        "total_squat"},
+                {"SIT_UP",       "total_sit_up"},
+                {"PUSH_UP",      "total_push_up"},
+                {"PULL_UP",      "total_pull_up"},
+                {"JUMP_ROPE",    "total_jump_rope"},
+                {"JUMPING_JACK", "total_jumping_jack"},
+                {"HIGH_KNEES",   "total_high_knees"},
             };
             for (String[] t : types) {
                 String col = t[1];

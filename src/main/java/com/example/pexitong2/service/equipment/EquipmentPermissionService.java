@@ -15,7 +15,7 @@ public class EquipmentPermissionService {
     
     /**
      * 检查用户是否有器材管理权限
-     * 只有校级管理员和超级管理员有权限
+     * 院级管理员、校级管理员和超级管理员有权限
      */
     public boolean hasEquipmentManagementPermission(String userId) {
         Optional<User> userOpt = userRepository.findById(userId);
@@ -26,7 +26,9 @@ public class EquipmentPermissionService {
         User user = userOpt.get();
         User.UserType userType = user.getUserType();
         
-        return userType == User.UserType.school_admin || userType == User.UserType.super_admin;
+        return userType == User.UserType.department_admin
+                || userType == User.UserType.school_admin
+                || userType == User.UserType.super_admin;
     }
     
     /**
@@ -48,7 +50,7 @@ public class EquipmentPermissionService {
      */
     public void validateEquipmentManagementPermission(String userId) {
         if (!hasEquipmentManagementPermission(userId)) {
-            throw new RuntimeException("权限不足，只有校级管理员和超级管理员可以管理器材");
+            throw new RuntimeException("权限不足，只有院级及以上管理员可以管理器材");
         }
     }
     

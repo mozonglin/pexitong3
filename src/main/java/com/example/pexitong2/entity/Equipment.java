@@ -53,6 +53,9 @@ public class Equipment {
     
     @Column(name = "storage_location", length = 50)
     private String storageLocation;
+
+    @Column(name = "school", length = 100)
+    private String school;
     
     @Column(name = "created_by", length = 36)
     private String createdBy;
@@ -122,6 +125,9 @@ public class Equipment {
     
     public String getStorageLocation() { return storageLocation; }
     public void setStorageLocation(String storageLocation) { this.storageLocation = storageLocation; }
+
+    public String getSchool() { return school; }
+    public void setSchool(String school) { this.school = school; }
     
     public String getCreatedBy() { return createdBy; }
     public void setCreatedBy(String createdBy) { this.createdBy = createdBy; }
