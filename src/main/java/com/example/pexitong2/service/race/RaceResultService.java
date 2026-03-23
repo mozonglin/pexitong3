@@ -14,7 +14,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+import java.time.Instant;
 import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
@@ -62,7 +64,7 @@ public class RaceResultService {
                 validateItem(item);
 
                 RaceResult entity = new RaceResult();
-                entity.setStudentNumber(item.getStudentNumber().trim());
+                entity.setStudentNumber(StringUtils.hasText(item.getStudentNumber()) ? item.getStudentNumber().trim() : null);
                 entity.setName(item.getName().trim());
                 entity.setSchool(item.getSchool() != null ? item.getSchool().trim() : "");
                 entity.setGender(item.getGender().trim());
@@ -71,7 +73,7 @@ public class RaceResultService {
                 entity.setFinalTimeMs(item.getFinalTimeMs());
                 entity.setTeacherName(item.getTeacherName() != null ? item.getTeacherName().trim() : "");
                 entity.setUploaderId(uploaderId);
-                entity.setUploadedAt(request.getUploadedAt());
+                entity.setUploadedAt(LocalDateTime.ofInstant(request.getUploadedAt(), ZoneOffset.UTC));
 
                 raceResultRepository.save(entity);
                 uploadedCount++;
@@ -86,9 +88,6 @@ public class RaceResultService {
     }
 
     private void validateItem(RaceResultItemDto item) {
-        if (!StringUtils.hasText(item.getStudentNumber())) {
-            throw new IllegalArgumentException("学号不能为空");
-        }
         if (!StringUtils.hasText(item.getName())) {
             throw new IllegalArgumentException("姓名不能为空");
         }

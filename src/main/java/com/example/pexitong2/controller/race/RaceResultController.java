@@ -19,7 +19,7 @@ import java.util.Map;
  *
  * 管理端接口（teacher / department_admin / school_admin / super_admin）：
  *   GET    /race/results                  - 分页查询成绩列表
- *   GET    /race/results/statistics       - 统计数据
+ *   GET    /race/results/statupload-result-api.mdistics       - 统计数据
  *   GET    /race/results/{id}             - 查询单条成绩详情
  *   DELETE /race/results/{id}             - 删除单条成绩（仅管理员）
  *   DELETE /race/results/batch            - 批量删除（仅管理员）

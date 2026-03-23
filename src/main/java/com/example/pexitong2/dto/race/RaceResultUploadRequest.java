@@ -1,8 +1,6 @@
 package com.example.pexitong2.dto.race;
 
-import com.fasterxml.jackson.annotation.JsonFormat;
-
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.List;
 
 /**
@@ -10,15 +8,14 @@ import java.util.List;
  */
 public class RaceResultUploadRequest {
 
-    @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", timezone = "UTC")
-    private LocalDateTime uploadedAt;
+    private Instant uploadedAt;
 
     private List<RaceResultItemDto> results;
 
     public RaceResultUploadRequest() {}
 
-    public LocalDateTime getUploadedAt() { return uploadedAt; }
-    public void setUploadedAt(LocalDateTime uploadedAt) { this.uploadedAt = uploadedAt; }
+    public Instant getUploadedAt() { return uploadedAt; }
+    public void setUploadedAt(Instant uploadedAt) { this.uploadedAt = uploadedAt; }
 
     public List<RaceResultItemDto> getResults() { return results; }
     public void setResults(List<RaceResultItemDto> results) { this.results = results; }

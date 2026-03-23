@@ -22,7 +22,7 @@ public class RaceResult {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name = "student_number", nullable = false, length = 50)
+    @Column(name = "student_number", nullable = true, length = 50)
     private String studentNumber;
 
     @Column(name = "name", nullable = false, length = 100)
