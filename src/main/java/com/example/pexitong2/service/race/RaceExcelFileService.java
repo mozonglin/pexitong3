@@ -53,9 +53,12 @@ public class RaceExcelFileService {
             uploadTime = LocalDateTime.now();
         }
 
+        String fullPath = dir.resolve(savedFilename).toString();
+
         RaceExcelFile entity = new RaceExcelFile();
         entity.setOriginalFilename(originalFilename);
         entity.setSavedFilename(savedFilename);
+        entity.setFilePath(fullPath);
         entity.setSchool(school.trim());
         entity.setTeacherName(teacherName != null ? teacherName.trim() : "");
         entity.setUploaderId(uploaderId);

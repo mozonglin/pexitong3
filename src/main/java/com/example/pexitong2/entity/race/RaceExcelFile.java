@@ -40,6 +40,10 @@ public class RaceExcelFile {
     @Column(name = "uploaded_at", nullable = false)
     private LocalDateTime uploadedAt;
 
+    /** 文件在服务器上的存储路径（完整路径） */
+    @Column(name = "file_path", nullable = false, length = 500)
+    private String filePath;
+
     /** 文件字节大小 */
     @Column(name = "file_size")
     private Long fileSize;
@@ -71,12 +75,12 @@ public class RaceExcelFile {
     public LocalDateTime getUploadedAt() { return uploadedAt; }
     public void setUploadedAt(LocalDateTime uploadedAt) { this.uploadedAt = uploadedAt; }
 
+    public String getFilePath() { return filePath; }
+    public void setFilePath(String filePath) { this.filePath = filePath; }
+
     public Long getFileSize() { return fileSize; }
     public void setFileSize(Long fileSize) { this.fileSize = fileSize; }
 
     public LocalDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
-
-    /** 便捷方法：返回保存的文件名（用于路径拼接） */
-    public String getFilePath() { return savedFilename; }
 }

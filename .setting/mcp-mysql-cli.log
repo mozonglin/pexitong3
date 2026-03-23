@@ -1,0 +1,10 @@
+2026-03-23T11:04:00.526Z | INFO | Starting MCP MySQL server from: f:\pexitong3\node_modules\@liangshanli\mcp-server-mysql\src\server-final.js
+2026-03-23T11:04:00.531Z | INFO | Starting MCP MySQL server with environment: | {"MYSQL_HOST":"38.207.179.218","MYSQL_PORT":"3306","MYSQL_USER":"pexitong3","MYSQL_DATABASE":"pexitong3","READONLY":"false","ALLOW_DDL":"true","ALLOW_DROP":"false","ALLOW_DELETE":"false","TOOL_PREFIX":"(not set)","PROJECT_NAME":"(not set)","MCP_LOG_DIR":"./.setting","MCP_DDL_LOG_FILE":"ddl.sql"}
+2026-03-23T11:04:00.538Z | INFO | MCP MySQL server process started with PID: 16312
+2026-03-23T11:04:00.539Z | INFO | Signal handlers registered for SIGINT and SIGTERM
+2026-03-23T11:04:00.539Z | INFO | Press Ctrl+C to gracefully shutdown the server
+2026-03-23T11:11:14.242Z | INFO | Starting MCP MySQL server from: f:\pexitong3\node_modules\@liangshanli\mcp-server-mysql\src\server-final.js
+2026-03-23T11:11:14.248Z | INFO | Starting MCP MySQL server with environment: | {"MYSQL_HOST":"38.207.179.218","MYSQL_PORT":"3306","MYSQL_USER":"pexitong3","MYSQL_DATABASE":"pexitong3","READONLY":"false","ALLOW_DDL":"true","ALLOW_DROP":"false","ALLOW_DELETE":"false","TOOL_PREFIX":"(not set)","PROJECT_NAME":"(not set)","MCP_LOG_DIR":"./.setting","MCP_DDL_LOG_FILE":"ddl.sql"}
+2026-03-23T11:11:14.260Z | INFO | MCP MySQL server process started with PID: 24316
+2026-03-23T11:11:14.260Z | INFO | Signal handlers registered for SIGINT and SIGTERM
+2026-03-23T11:11:14.261Z | INFO | Press Ctrl+C to gracefully shutdown the server
