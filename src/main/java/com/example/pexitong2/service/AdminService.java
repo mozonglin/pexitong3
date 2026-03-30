@@ -20,6 +20,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Service
@@ -200,6 +201,88 @@ public class AdminService {
         return result;
     }
     
+    /**
+     * 管理员直接创建用户（无需验证码）
+     * 返回生成的用户名和初始密码，由管理员告知用户
+     */
+    public Map<String, Object> createUser(Map<String, String> request, String currentUserId) {
+        User currentUser = userRepository.findById(currentUserId)
+            .orElseThrow(() -> new RuntimeException("当前用户不存在"));
+
+        // 仅 school_admin 及以上可操作
+        if (currentUser.getUserType() == User.UserType.student
+                || currentUser.getUserType() == User.UserType.teacher) {
+            throw new RuntimeException("权限不足，仅管理员可创建用户");
+        }
+
+        String realName  = request.get("realName");
+        String studentId = request.get("studentId");
+        String school    = request.get("school");
+        String college   = request.get("college");
+        String phone     = request.get("phone");
+        String userTypeStr = request.get("userType");
+
+        if (realName == null || realName.isBlank())  throw new RuntimeException("真实姓名不能为空");
+        if (studentId == null || studentId.isBlank()) throw new RuntimeException("学工号不能为空");
+        if (school == null || school.isBlank())       throw new RuntimeException("所属学校不能为空");
+        if (userTypeStr == null || userTypeStr.isBlank()) throw new RuntimeException("用户类型不能为空");
+
+        User.UserType userType;
+        try {
+            userType = User.UserType.valueOf(userTypeStr);
+        } catch (IllegalArgumentException e) {
+            throw new RuntimeException("无效的用户类型: " + userTypeStr);
+        }
+
+        // 校级管理员只能创建本校用户，且不能创建比自己级别更高的角色
+        if (currentUser.getUserType() == User.UserType.school_admin) {
+            if (!currentUser.getSchool().equals(school)) {
+                throw new RuntimeException("权限不足，只能为本校创建用户");
+            }
+            if (userType == User.UserType.school_admin || userType == User.UserType.super_admin) {
+                throw new RuntimeException("权限不足，无法创建该角色用户");
+            }
+        }
+
+        // 去重检查
+        if (userRepository.existsByStudentId(studentId)) {
+            throw new RuntimeException("该学工号已注册");
+        }
+        if (phone != null && !phone.isBlank() && userRepository.existsByPhone(phone)) {
+            throw new RuntimeException("该手机号已注册");
+        }
+
+        // 生成用户名和初始密码
+        String namePrefix = realName.substring(0, Math.min(3, realName.length())).toLowerCase();
+        String idSuffix   = studentId.length() > 4 ? studentId.substring(studentId.length() - 4) : studentId;
+        String username   = namePrefix + idSuffix;
+        // 若用户名已存在则追加随机后缀
+        if (userRepository.findByUsername(username).isPresent()) {
+            username = username + (new Random().nextInt(90) + 10);
+        }
+
+        String initialPassword = "Pe" + (new Random().nextInt(9000) + 1000) + "!";
+
+        String prefix = (userType == User.UserType.student) ? "stu_" : "tea_";
+        String userId = prefix + UUID.randomUUID().toString().substring(0, 8);
+
+        User user = new User(userId, username, passwordEncoder.encode(initialPassword),
+                realName, studentId, userType, school);
+        if (college != null && !college.isBlank()) user.setDepartmentName(college);
+        if (phone != null && !phone.isBlank()) user.setPhone(phone);
+        userRepository.save(user);
+
+        Map<String, Object> result = new HashMap<>();
+        result.put("userId", userId);
+        result.put("username", username);
+        result.put("initialPassword", initialPassword);
+        result.put("realName", realName);
+        result.put("userType", userType.name());
+        result.put("school", school);
+        result.put("createdBy", currentUserId);
+        return result;
+    }
+
     /**
      * 获取管理员统计
      */

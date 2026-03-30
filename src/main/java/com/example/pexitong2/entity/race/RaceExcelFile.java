@@ -48,6 +48,10 @@ public class RaceExcelFile {
     @Column(name = "file_size")
     private Long fileSize;
 
+    /** 解析入库时间；null 表示尚未解析 */
+    @Column(name = "parsed_at")
+    private LocalDateTime parsedAt;
+
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
@@ -80,6 +84,9 @@ public class RaceExcelFile {
 
     public Long getFileSize() { return fileSize; }
     public void setFileSize(Long fileSize) { this.fileSize = fileSize; }
+
+    public LocalDateTime getParsedAt() { return parsedAt; }
+    public void setParsedAt(LocalDateTime parsedAt) { this.parsedAt = parsedAt; }
 
     public LocalDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }

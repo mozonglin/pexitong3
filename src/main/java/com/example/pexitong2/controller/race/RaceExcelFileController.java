@@ -19,6 +19,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
+import java.util.LinkedHashMap;
 
 /**
  * 比赛成绩 Excel 文件管理接口
@@ -90,10 +91,8 @@ public class RaceExcelFileController {
             @RequestHeader("Authorization")        String token) {
 
         try {
-            extractUserId(token);
-            String scopeSchool = StringUtils.hasText(school) ? school : null;
-
-            Page<RaceExcelFile> result = excelFileService.list(scopeSchool, teacherName, page, pageSize);
+            String userId = extractUserId(token);
+            Page<RaceExcelFile> result = excelFileService.list(userId, school, teacherName, page, pageSize);
 
             List<Map<String, Object>> list = result.getContent().stream()
                     .map(this::toMap)
@@ -124,9 +123,9 @@ public class RaceExcelFileController {
             @RequestHeader("Authorization") String token) {
 
         try {
-            extractUserId(token);
-            RaceExcelFile record   = excelFileService.getById(id);
-            Resource      resource = excelFileService.getFileResource(id);
+            String userId          = extractUserId(token);
+            RaceExcelFile record   = excelFileService.getByIdScoped(id, userId);
+            Resource      resource = excelFileService.getFileResource(id, userId);
 
             return ResponseEntity.ok()
                     .contentType(MediaType.parseMediaType(
@@ -141,6 +140,59 @@ public class RaceExcelFileController {
         }
     }
 
+    // ── 预览 Excel 内容 ───────────────────────────────────────────────────
+
+    @GetMapping("/race/excel/files/{id}/preview")
+    public ResponseEntity<Map<String, Object>> previewFile(
+            @PathVariable Long id,
+            @RequestHeader("Authorization") String token) {
+
+        try {
+            String userId = extractUserId(token);
+            Map<String, Object> data = excelFileService.previewExcel(id, userId);
+
+            Map<String, Object> body = new LinkedHashMap<>();
+            body.put("code",    200);
+            body.put("message", "获取成功");
+            body.put("data",    data);
+            return ResponseEntity.ok(body);
+        } catch (Exception e) {
+            return ResponseEntity.internalServerError().body(Map.of(
+                    "code", 500, "message", e.getMessage() != null ? e.getMessage() : "服务器内部错误"));
+        }
+    }
+
+    // ── 解析 Excel 入库 ───────────────────────────────────────────────────
+
+    @PostMapping("/race/excel/files/{id}/parse")
+    public ResponseEntity<Map<String, Object>> parseToDb(
+            @PathVariable Long id,
+            @RequestBody Map<String, Object> body,
+            @RequestHeader("Authorization") String token) {
+
+        try {
+            String uploaderId = extractUserId(token);
+
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> rows = (List<Map<String, Object>>) body.get("rows");
+            if (rows == null || rows.isEmpty())
+                return bad("rows 不能为空");
+
+            Map<String, Object> result = excelFileService.parseToDb(id, rows, uploaderId);
+
+            Map<String, Object> resp = new LinkedHashMap<>();
+            resp.put("code",    200);
+            resp.put("message", "解析完成");
+            resp.put("data",    result);
+            return ResponseEntity.ok(resp);
+        } catch (IllegalArgumentException | IllegalStateException e) {
+            return bad(e.getMessage());
+        } catch (Exception e) {
+            return ResponseEntity.internalServerError().body(Map.of(
+                    "code", 500, "message", e.getMessage() != null ? e.getMessage() : "服务器内部错误"));
+        }
+    }
+
     // ── 删除 ─────────────────────────────────────────────────────────────
 
     @DeleteMapping("/race/excel/files/{id}")
@@ -149,8 +201,8 @@ public class RaceExcelFileController {
             @RequestHeader("Authorization") String token) {
 
         try {
-            extractUserId(token);
-            excelFileService.delete(id);
+            String userId = extractUserId(token);
+            excelFileService.delete(id, userId);
             return ResponseEntity.ok(Map.of("code", 200, "message", "删除成功"));
         } catch (Exception e) {
             return ResponseEntity.internalServerError().body(Map.of(
@@ -171,14 +223,16 @@ public class RaceExcelFileController {
     }
 
     private Map<String, Object> toMap(RaceExcelFile f) {
-        return Map.of(
-                "id",               f.getId(),
-                "originalFilename", f.getOriginalFilename() != null ? f.getOriginalFilename() : "",
-                "school",           f.getSchool()      != null ? f.getSchool()      : "",
-                "teacherName",      f.getTeacherName() != null ? f.getTeacherName() : "",
-                "uploadedAt",       f.getUploadedAt()  != null ? f.getUploadedAt().toString()  : "",
-                "fileSize",         f.getFileSize()    != null ? f.getFileSize()    : 0L,
-                "createdAt",        f.getCreatedAt()   != null ? f.getCreatedAt().toString()   : ""
-        );
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("id",               f.getId());
+        m.put("originalFilename", f.getOriginalFilename() != null ? f.getOriginalFilename() : "");
+        m.put("school",           f.getSchool()      != null ? f.getSchool()      : "");
+        m.put("teacherName",      f.getTeacherName() != null ? f.getTeacherName() : "");
+        m.put("uploadedAt",       f.getUploadedAt()  != null ? f.getUploadedAt().toString()  : "");
+        m.put("fileSize",         f.getFileSize()    != null ? f.getFileSize()    : 0L);
+        m.put("createdAt",        f.getCreatedAt()   != null ? f.getCreatedAt().toString()   : "");
+        m.put("parsedAt",         f.getParsedAt()    != null ? f.getParsedAt().toString()    : null);
+        m.put("parsed",           f.getParsedAt()    != null);
+        return m;
     }
 }

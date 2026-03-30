@@ -20,10 +20,12 @@ import java.util.*;
 /**
  * checkuser 库数据导入接口（仅 super_admin 可用）
  *
- * GET  /checkuser/template/student  → 下载学生导入模板
- * GET  /checkuser/template/teacher  → 下载教师导入模板
- * POST /checkuser/import/student    → 上传学生 Excel，去重导入
- * POST /checkuser/import/teacher    → 上传教师 Excel，去重导入
+ * GET  /checkuser/teacher-schools    → 公开接口，获取教师预导入库中的学校列表（注册页用）
+ * GET  /checkuser/schools            → 查询各学校预导入学生/教师数量（需超管）
+ * GET  /checkuser/template/student   → 下载学生导入模板
+ * GET  /checkuser/template/teacher   → 下载教师导入模板
+ * POST /checkuser/import/student     → 上传学生 Excel，去重导入
+ * POST /checkuser/import/teacher     → 上传教师 Excel，去重导入
  */
 @RestController
 @RequestMapping("/checkuser")
@@ -50,6 +52,85 @@ public class CheckUserImportController {
         String header = request.getHeader("Authorization");
         if (header != null && header.startsWith("Bearer ")) return header.substring(7);
         throw new SecurityException("未提供认证 Token");
+    }
+
+    // ── 公开接口：注册页获取教师学校列表 ──────────────────────────────────────
+
+    /**
+     * 公开接口（无需登录），返回 checkteacher 中所有有记录的学校名称列表。
+     * 供注册页面的学校下拉框使用。
+     */
+    @GetMapping("/teacher-schools")
+    public ResponseEntity<ApiResponse<List<String>>> getTeacherSchools() {
+        try {
+            List<Map<String, Object>> rows = jdbcTemplate.queryForList(
+                "SELECT DISTINCT school FROM checkuser.checkteacher WHERE school IS NOT NULL ORDER BY school");
+            List<String> schools = new ArrayList<>();
+            for (Map<String, Object> row : rows) {
+                String school = (String) row.get("school");
+                if (school != null && !school.isBlank()) {
+                    schools.add(school);
+                }
+            }
+            return ResponseEntity.ok(ApiResponse.success("获取成功", schools));
+        } catch (Exception e) {
+            return ResponseEntity.internalServerError()
+                .body(ApiResponse.error("查询失败：" + e.getMessage()));
+        }
+    }
+
+    // ── 学校统计 ──────────────────────────────────────────────────────────────
+
+    /**
+     * 查询 checkuser 库中各学校的预导入学生/教师数量
+     * 返回结构：[ { school, studentCount, teacherCount } ]
+     */
+    @GetMapping("/schools")
+    public ResponseEntity<ApiResponse<List<Map<String, Object>>>> getSchoolStats(HttpServletRequest request) {
+        try {
+            requireSuperAdmin(request);
+
+            // 查询学生各学校数量
+            List<Map<String, Object>> studentRows = jdbcTemplate.queryForList(
+                "SELECT school, COUNT(*) AS cnt FROM checkuser.checkstudent GROUP BY school ORDER BY school");
+            Map<String, Long> studentMap = new LinkedHashMap<>();
+            for (Map<String, Object> row : studentRows) {
+                String school = (String) row.get("school");
+                Long cnt = ((Number) row.get("cnt")).longValue();
+                studentMap.put(school != null ? school : "", cnt);
+            }
+
+            // 查询教师各学校数量
+            List<Map<String, Object>> teacherRows = jdbcTemplate.queryForList(
+                "SELECT school, COUNT(*) AS cnt FROM checkuser.checkteacher GROUP BY school ORDER BY school");
+            Map<String, Long> teacherMap = new LinkedHashMap<>();
+            for (Map<String, Object> row : teacherRows) {
+                String school = (String) row.get("school");
+                Long cnt = ((Number) row.get("cnt")).longValue();
+                teacherMap.put(school != null ? school : "", cnt);
+            }
+
+            // 合并学校列表
+            Set<String> allSchools = new LinkedHashSet<>();
+            allSchools.addAll(studentMap.keySet());
+            allSchools.addAll(teacherMap.keySet());
+
+            List<Map<String, Object>> result = new ArrayList<>();
+            for (String school : allSchools) {
+                Map<String, Object> item = new LinkedHashMap<>();
+                item.put("school", school);
+                item.put("studentCount", studentMap.getOrDefault(school, 0L));
+                item.put("teacherCount", teacherMap.getOrDefault(school, 0L));
+                result.add(item);
+            }
+
+            return ResponseEntity.ok(ApiResponse.success("获取成功", result));
+        } catch (SecurityException e) {
+            return ResponseEntity.status(403).body(ApiResponse.error(e.getMessage()));
+        } catch (Exception e) {
+            return ResponseEntity.internalServerError()
+                .body(ApiResponse.error("查询失败：" + e.getMessage()));
+        }
     }
 
     // ── 下载模板 ──────────────────────────────────────────────────────────────

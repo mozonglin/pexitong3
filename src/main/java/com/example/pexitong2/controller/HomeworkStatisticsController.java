@@ -1,6 +1,7 @@
 package com.example.pexitong2.controller;
 
 import com.example.pexitong2.dto.ApiResponse;
+import com.example.pexitong2.service.HomeworkStatsCacheService;
 import com.example.pexitong2.util.JwtUtil;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -32,6 +33,9 @@ public class HomeworkStatisticsController {
 
     @Autowired
     private JwtUtil jwtUtil;
+
+    @Autowired
+    private HomeworkStatsCacheService cacheService;
 
     // ── 内部辅助：从 Token 解析管理员信息 ────────────────────────────────────────
 
@@ -111,9 +115,11 @@ public class HomeworkStatisticsController {
         return new Object[]{"u.school = ?", new Object[]{ctx.school}};
     }
 
-    // ── 1. 总览（直接读 users1 的 total_* 字段） ─────────────────────────────────
+    // ── 1. 总览 ─────────────────────────────────────────────────────────────────
     @GetMapping("/overview")
-    public ResponseEntity<ApiResponse<Map<String, Object>>> getOverview(HttpServletRequest request) {
+    public ResponseEntity<ApiResponse<Map<String, Object>>> getOverview(
+            HttpServletRequest request,
+            @RequestParam(required = false) String period) {
         AdminContext ctx;
         try {
             ctx = resolveAdmin(request);
@@ -122,10 +128,48 @@ public class HomeworkStatisticsController {
         }
         try {
             Object[] scope = buildUserScope(ctx);
-            String where  = (String)   scope[0];
+            String where    = (String)   scope[0];
             Object[] params = (Object[]) scope[1];
+            String joinWhere = where.replace("u.", "u1.");
 
-            // ① 汇总：有作业记录的学生数 + 各运动类型总次数
+            // ── 有日期过滤时：所有数据从 homework_scores 聚合 ──
+            if (hasPeriodFilter(period)) {
+                String df = getDateCondition("h.timestamp", period);
+
+                // 一次查询同时获取汇总数据和分类型数据（WITH rollup 写法兼容性差，改用 UNION ALL）
+                String sumSql =
+                    "SELECT COUNT(*) AS totalRecords, " +
+                    "COUNT(DISTINCT h.student_id) AS totalStudents, " +
+                    "COALESCE(SUM(h.`count`), 0) AS totalReps " +
+                    "FROM homework_scores h " +
+                    "JOIN users1 u1 ON u1.student_id = h.student_id " +
+                    "WHERE " + df + " AND " + joinWhere;
+                Map<String, Object> sums = jdbcTemplate.queryForMap(sumSql, params);
+
+                String typeSql =
+                    "SELECT h.exercise_type AS type, " +
+                    "COUNT(DISTINCT h.student_id) AS students, " +
+                    "COALESCE(SUM(h.`count`), 0) AS totalReps " +
+                    "FROM homework_scores h " +
+                    "JOIN users1 u1 ON u1.student_id = h.student_id " +
+                    "WHERE " + df + " AND " + joinWhere +
+                    " GROUP BY h.exercise_type ORDER BY totalReps DESC";
+                List<Map<String, Object>> typeStats = jdbcTemplate.queryForList(typeSql, params);
+
+                Map<String, Object> data = new LinkedHashMap<>();
+                data.put("totalStudents", sums.get("totalStudents"));
+                data.put("totalReps",     sums.get("totalReps"));
+                data.put("totalRecords",  sums.get("totalRecords"));
+                data.put("todayRecords",  sums.get("totalRecords"));
+                data.put("todayStudents", sums.get("totalStudents"));
+                data.put("weekRecords",   sums.get("totalRecords"));
+                data.put("typeStats",     typeStats);
+                return ResponseEntity.ok(ApiResponse.success("获取成功", data));
+            }
+
+            // ── 无日期过滤：合并为 3 次查询（原来是 10+ 次） ──
+
+            // 查询1：从 users1 累计字段一次性汇总所有运动类型
             String sumSql =
                 "SELECT COUNT(*) AS totalStudents, " +
                 "SUM(u.total_squat)        AS totalSquat, " +
@@ -134,12 +178,32 @@ public class HomeworkStatisticsController {
                 "SUM(u.total_pull_up)      AS totalPullUp, " +
                 "SUM(u.total_jump_rope)    AS totalJumpRope, " +
                 "SUM(u.total_jumping_jack) AS totalJumpingJack, " +
-                "SUM(u.total_high_knees)   AS totalHighKnees " +
-                "FROM users1 u WHERE " + where +
-                " AND (u.total_squat + u.total_sit_up + u.total_push_up" +
-                "      + u.total_pull_up + u.total_jump_rope" +
-                "      + u.total_jumping_jack + u.total_high_knees) > 0";
+                "SUM(u.total_high_knees)   AS totalHighKnees, " +
+                "COUNT(CASE WHEN u.total_squat > 0 THEN 1 END)        AS studentsSquat, " +
+                "COUNT(CASE WHEN u.total_sit_up > 0 THEN 1 END)       AS studentsSitUp, " +
+                "COUNT(CASE WHEN u.total_push_up > 0 THEN 1 END)      AS studentsPushUp, " +
+                "COUNT(CASE WHEN u.total_pull_up > 0 THEN 1 END)      AS studentsPullUp, " +
+                "COUNT(CASE WHEN u.total_jump_rope > 0 THEN 1 END)    AS studentsJumpRope, " +
+                "COUNT(CASE WHEN u.total_jumping_jack > 0 THEN 1 END) AS studentsJumpingJack, " +
+                "COUNT(CASE WHEN u.total_high_knees > 0 THEN 1 END)   AS studentsHighKnees " +
+                "FROM users1 u WHERE " + where;
             Map<String, Object> sums = jdbcTemplate.queryForMap(sumSql, params);
+
+            // 查询2：今日记录数和活跃学生数
+            String todaySql =
+                "SELECT COUNT(*) AS todayRecords, COUNT(DISTINCT h.student_id) AS todayStudents " +
+                "FROM homework_scores h " +
+                "JOIN users1 u1 ON u1.student_id = h.student_id " +
+                "WHERE h.timestamp >= CURDATE() AND h.timestamp < CURDATE() + INTERVAL 1 DAY AND " + joinWhere;
+            Map<String, Object> today = jdbcTemplate.queryForMap(todaySql, params);
+
+            // 查询3：本周记录数
+            String weekSql =
+                "SELECT COUNT(*) AS weekRecords " +
+                "FROM homework_scores h " +
+                "JOIN users1 u1 ON u1.student_id = h.student_id " +
+                "WHERE h.timestamp >= DATE_SUB(CURDATE(), INTERVAL 7 DAY) AND " + joinWhere;
+            Map<String, Object> week = jdbcTemplate.queryForMap(weekSql, params);
 
             long totalSquat       = toLong(sums.get("totalSquat"));
             long totalSitUp       = toLong(sums.get("totalSitUp"));
@@ -151,45 +215,22 @@ public class HomeworkStatisticsController {
             long totalReps        = totalSquat + totalSitUp + totalPushUp + totalPullUp
                                   + totalJumpRope + totalJumpingJack + totalHighKnees;
 
-            // ② 今日 / 本周提交次数（需要时间维度，join homework_scores）
-            //    将 where 中的别名 u. 替换为 u1. 以匹配 join 后的别名
-            String joinWhere = where.replace("u.", "u1.");
-
-            String todaySql =
-                "SELECT COUNT(*) AS todayRecords, COUNT(DISTINCT h.student_id) AS todayStudents " +
-                "FROM homework_scores h " +
-                "JOIN users1 u1 ON u1.student_id = h.student_id " +
-                "WHERE DATE(h.timestamp) = CURDATE() AND " + joinWhere;
-            Map<String, Object> today = jdbcTemplate.queryForMap(todaySql, params);
-
-            String weekSql =
-                "SELECT COUNT(*) AS weekRecords " +
-                "FROM homework_scores h " +
-                "JOIN users1 u1 ON u1.student_id = h.student_id " +
-                "WHERE YEARWEEK(h.timestamp, 1) = YEARWEEK(CURDATE(), 1) AND " + joinWhere;
-            Map<String, Object> week = jdbcTemplate.queryForMap(weekSql, params);
-
-            // ③ 各运动类型分布（从 users1 聚合）
+            // 从已有汇总中直接构造 typeStats，无需额外查询
             List<Map<String, Object>> typeStats = new ArrayList<>();
-            String[][] types = {
-                {"SQUAT",        "total_squat"},
-                {"SIT_UP",       "total_sit_up"},
-                {"PUSH_UP",      "total_push_up"},
-                {"PULL_UP",      "total_pull_up"},
-                {"JUMP_ROPE",    "total_jump_rope"},
-                {"JUMPING_JACK", "total_jumping_jack"},
-                {"HIGH_KNEES",   "total_high_knees"},
+            Object[][] types = {
+                {"SQUAT",        totalSquat,       sums.get("studentsSquat")},
+                {"SIT_UP",       totalSitUp,       sums.get("studentsSitUp")},
+                {"PUSH_UP",      totalPushUp,      sums.get("studentsPushUp")},
+                {"PULL_UP",      totalPullUp,      sums.get("studentsPullUp")},
+                {"JUMP_ROPE",    totalJumpRope,    sums.get("studentsJumpRope")},
+                {"JUMPING_JACK", totalJumpingJack, sums.get("studentsJumpingJack")},
+                {"HIGH_KNEES",   totalHighKnees,   sums.get("studentsHighKnees")},
             };
-            for (String[] t : types) {
-                String col = t[1];
-                String typeSql =
-                    "SELECT COUNT(*) AS students, COALESCE(SUM(u." + col + "), 0) AS totalReps " +
-                    "FROM users1 u WHERE " + where + " AND u." + col + " > 0";
-                Map<String, Object> row = jdbcTemplate.queryForMap(typeSql, params);
+            for (Object[] t : types) {
                 Map<String, Object> item = new LinkedHashMap<>();
                 item.put("type",      t[0]);
-                item.put("students",  row.get("students"));
-                item.put("totalReps", row.get("totalReps"));
+                item.put("students",  t[2]);
+                item.put("totalReps", t[1]);
                 typeStats.add(item);
             }
             typeStats.sort((a, b) -> Long.compare(toLong(b.get("totalReps")), toLong(a.get("totalReps"))));
@@ -197,7 +238,7 @@ public class HomeworkStatisticsController {
             Map<String, Object> data = new LinkedHashMap<>();
             data.put("totalStudents", sums.get("totalStudents"));
             data.put("totalReps",     totalReps);
-            data.put("totalRecords",  today.get("todayRecords")); // 兼容前端
+            data.put("totalRecords",  today.get("todayRecords"));
             data.put("todayRecords",  today.get("todayRecords"));
             data.put("todayStudents", today.get("todayStudents"));
             data.put("weekRecords",   week.get("weekRecords"));
@@ -209,9 +250,11 @@ public class HomeworkStatisticsController {
         }
     }
 
-    // ── 2. 近30天趋势（需要时间维度，join homework_scores） ──────────────────────
+    // ── 2. 趋势（按日期分组，缓存5分钟） ─────────────────────────────────────────
     @GetMapping("/trend")
-    public ResponseEntity<ApiResponse<List<Map<String, Object>>>> getTrend(HttpServletRequest request) {
+    public ResponseEntity<ApiResponse<List<Map<String, Object>>>> getTrend(
+            HttpServletRequest request,
+            @RequestParam(required = false) String period) {
         AdminContext ctx;
         try {
             ctx = resolveAdmin(request);
@@ -223,31 +266,20 @@ public class HomeworkStatisticsController {
             String where    = (String)   scope[0];
             Object[] params = (Object[]) scope[1];
             String joinWhere = where.replace("u.", "u1.");
+            String scopeKey = buildScopeKey(ctx);
 
-            String sql =
-                "SELECT DATE_FORMAT(h.timestamp, '%Y-%m-%d') AS date, h.exercise_type AS type, " +
-                "COUNT(*) AS sessions, COUNT(DISTINCT h.student_id) AS students, " +
-                "COALESCE(SUM(h.`count`), 0) AS totalReps " +
-                "FROM homework_scores h " +
-                "JOIN users1 u1 ON u1.student_id = h.student_id " +
-                "WHERE h.timestamp >= DATE_SUB(CURDATE(), INTERVAL 29 DAY) AND " + joinWhere +
-                " GROUP BY DATE_FORMAT(h.timestamp, '%Y-%m-%d'), h.exercise_type " +
-                "ORDER BY date ASC, totalReps DESC";
-
-            List<Map<String, Object>> rows = jdbcTemplate.queryForList(sql, params);
+            List<Map<String, Object>> rows = cacheService.getTrend(scopeKey, joinWhere, params, period);
             return ResponseEntity.ok(ApiResponse.success("获取成功", rows));
         } catch (Exception e) {
             return ResponseEntity.internalServerError().body(ApiResponse.error("查询失败: " + e.getMessage()));
         }
     }
 
-    // ── 3. 班级排名 ───────────────────────────────────────────────────────────────
-    // totalRecords  = homework_scores 实际提交条数
-    // activeStudents = 有过提交记录的去重学生数
-    // totalReps     = homework_scores.count 之和（实际完成次数）
-    // avgReps       = totalReps / activeStudents
+    // ── 3. 班级排名（缓存5分钟） ─────────────────────────────────────────────────
     @GetMapping("/class-rank")
-    public ResponseEntity<ApiResponse<List<Map<String, Object>>>> getClassRank(HttpServletRequest request) {
+    public ResponseEntity<ApiResponse<List<Map<String, Object>>>> getClassRank(
+            HttpServletRequest request,
+            @RequestParam(required = false) String period) {
         AdminContext ctx;
         try {
             ctx = resolveAdmin(request);
@@ -258,30 +290,20 @@ public class HomeworkStatisticsController {
             Object[] scope = buildUserScope(ctx);
             String where    = (String)   scope[0];
             Object[] params = (Object[]) scope[1];
-            String sql =
-                "SELECT u.class_name AS className, u.college AS departmentName, " +
-                "COUNT(DISTINCT u.id) AS totalStudents, " +
-                "COUNT(DISTINCT h.student_id) AS activeStudents, " +
-                "COALESCE(SUM(h.`count`), 0) AS totalReps, " +
-                "COALESCE(COUNT(h.id), 0) AS totalRecords, " +
-                "ROUND(COALESCE(SUM(h.`count`), 0) / NULLIF(COUNT(DISTINCT h.student_id), 0), 1) AS avgReps " +
-                "FROM users1 u " +
-                "LEFT JOIN homework_scores h ON h.student_id = u.student_id " +
-                "WHERE " + where + " AND u.class_name IS NOT NULL AND u.class_name != '' " +
-                "GROUP BY u.class_name, u.college " +
-                "ORDER BY totalReps DESC " +
-                "LIMIT 50";
+            String scopeKey = buildScopeKey(ctx);
 
-            List<Map<String, Object>> rows = jdbcTemplate.queryForList(sql, params);
+            List<Map<String, Object>> rows = cacheService.getClassRank(scopeKey, where, params, period);
             return ResponseEntity.ok(ApiResponse.success("获取成功", rows));
         } catch (Exception e) {
             return ResponseEntity.internalServerError().body(ApiResponse.error("查询失败: " + e.getMessage()));
         }
     }
 
-    // ── 4. 院系排名（仅校级/超级管理员可用） ──────────────────────────────────────
+    // ── 4. 院系排名（仅校级/超级管理员，缓存5分钟） ──────────────────────────────
     @GetMapping("/department-rank")
-    public ResponseEntity<ApiResponse<List<Map<String, Object>>>> getDepartmentRank(HttpServletRequest request) {
+    public ResponseEntity<ApiResponse<List<Map<String, Object>>>> getDepartmentRank(
+            HttpServletRequest request,
+            @RequestParam(required = false) String period) {
         AdminContext ctx;
         try {
             ctx = resolveAdmin(request);
@@ -295,31 +317,20 @@ public class HomeworkStatisticsController {
             Object[] scope = buildUserScope(ctx);
             String where    = (String)   scope[0];
             Object[] params = (Object[]) scope[1];
+            String scopeKey = buildScopeKey(ctx);
 
-            String sql =
-                "SELECT u.college AS departmentName, " +
-                "COUNT(DISTINCT u.id) AS totalStudents, " +
-                "COUNT(DISTINCT h.student_id) AS activeStudents, " +
-                "COALESCE(SUM(h.`count`), 0) AS totalReps, " +
-                "COALESCE(COUNT(h.id), 0) AS totalRecords, " +
-                "ROUND(COALESCE(SUM(h.`count`), 0) / NULLIF(COUNT(DISTINCT h.student_id), 0), 1) AS avgReps, " +
-                "COUNT(DISTINCT u.class_name) AS classCount " +
-                "FROM users1 u " +
-                "LEFT JOIN homework_scores h ON h.student_id = u.student_id " +
-                "WHERE " + where + " AND u.college IS NOT NULL AND u.college != '' " +
-                "GROUP BY u.college " +
-                "ORDER BY totalReps DESC";
-
-            List<Map<String, Object>> rows = jdbcTemplate.queryForList(sql, params);
+            List<Map<String, Object>> rows = cacheService.getDepartmentRank(scopeKey, where, params, period);
             return ResponseEntity.ok(ApiResponse.success("获取成功", rows));
         } catch (Exception e) {
             return ResponseEntity.internalServerError().body(ApiResponse.error("查询失败: " + e.getMessage()));
         }
     }
 
-    // ── 5. 院内班级排名（院级管理员专用） ─────────────────────────────────────────
+    // ── 5. 院内班级排名（院级管理员，缓存5分钟） ─────────────────────────────────
     @GetMapping("/dept-class-rank")
-    public ResponseEntity<ApiResponse<List<Map<String, Object>>>> getDeptClassRank(HttpServletRequest request) {
+    public ResponseEntity<ApiResponse<List<Map<String, Object>>>> getDeptClassRank(
+            HttpServletRequest request,
+            @RequestParam(required = false) String period) {
         AdminContext ctx;
         try {
             ctx = resolveAdmin(request);
@@ -330,22 +341,9 @@ public class HomeworkStatisticsController {
             Object[] scope = buildUserScope(ctx);
             String where    = (String)   scope[0];
             Object[] params = (Object[]) scope[1];
+            String scopeKey = buildScopeKey(ctx);
 
-            String sql =
-                "SELECT u.class_name AS className, u.college AS departmentName, " +
-                "COUNT(DISTINCT u.id) AS totalStudents, " +
-                "COUNT(DISTINCT h.student_id) AS activeStudents, " +
-                "COALESCE(SUM(h.`count`), 0) AS totalReps, " +
-                "COALESCE(COUNT(h.id), 0) AS totalRecords, " +
-                "ROUND(COALESCE(SUM(h.`count`), 0) / NULLIF(COUNT(DISTINCT h.student_id), 0), 1) AS avgReps " +
-                "FROM users1 u " +
-                "LEFT JOIN homework_scores h ON h.student_id = u.student_id " +
-                "WHERE " + where + " AND u.class_name IS NOT NULL AND u.class_name != '' " +
-                "GROUP BY u.class_name, u.college " +
-                "ORDER BY totalReps DESC " +
-                "LIMIT 30";
-
-            List<Map<String, Object>> rows = jdbcTemplate.queryForList(sql, params);
+            List<Map<String, Object>> rows = cacheService.getClassRank(scopeKey, where, params, period);
             return ResponseEntity.ok(ApiResponse.success("获取成功", rows));
         } catch (Exception e) {
             return ResponseEntity.internalServerError().body(ApiResponse.error("查询失败: " + e.getMessage()));
@@ -353,6 +351,29 @@ public class HomeworkStatisticsController {
     }
 
     // ── 工具方法 ──────────────────────────────────────────────────────────────────
+
+    /** 构造缓存 key（区分不同管理员的数据范围） */
+    private String buildScopeKey(AdminContext ctx) {
+        if (ctx.isSuperAdmin()) return "super";
+        if (ctx.isDeptAdmin())  return ctx.school + ":" + ctx.department;
+        return ctx.school;
+    }
+
+    private boolean hasPeriodFilter(String period) {
+        return period != null && !period.isBlank() && !"all".equalsIgnoreCase(period);
+    }
+
+    private String getDateCondition(String column, String period) {
+        if (period == null || period.isBlank()) return "1=1";
+        switch (period.toLowerCase()) {
+            case "today":       return column + " >= CURDATE() AND " + column + " < CURDATE() + INTERVAL 1 DAY";
+            case "week":        return column + " >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)";
+            case "month":       return column + " >= DATE_SUB(CURDATE(), INTERVAL 1 MONTH)";
+            case "four_months": return column + " >= DATE_SUB(CURDATE(), INTERVAL 4 MONTH)";
+            default:            return "1=1";
+        }
+    }
+
     private long toLong(Object v) {
         if (v == null) return 0L;
         if (v instanceof Number) return ((Number) v).longValue();

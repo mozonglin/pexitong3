@@ -2,9 +2,12 @@ package com.example.pexitong2.controller.pe;
 
 import com.example.pexitong2.dto.pe.*;
 import com.example.pexitong2.service.pe.PeStatisticsService;
+import com.example.pexitong2.service.pe.PeStatsCacheService;
 import com.example.pexitong2.util.JwtUtil;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
 
 /**
  * PE统计管理控制器
@@ -17,7 +20,10 @@ public class PeStatisticsController {
     
     @Autowired
     private PeStatisticsService peStatisticsService;
-    
+
+    @Autowired
+    private PeStatsCacheService peStatsCacheService;
+
     @Autowired
     private JwtUtil jwtUtil;
     
@@ -83,14 +89,18 @@ public class PeStatisticsController {
      */
     @GetMapping("/sunshine-run/school")
     public PeApiResponse<SunshineRunStatisticsResponse> getSchoolSunshineRunStatistics(
-            @RequestHeader("Authorization") String token) {
+            @RequestHeader("Authorization") String token,
+            @RequestParam(required = false) String period) {
         
         try {
             String currentUserId = getCurrentUserId(token);
+            if (hasPeriodFilter(period)) {
+                String cacheKey = currentUserId + ":school:" + period;
+                return PeApiResponse.success("获取成功",
+                        peStatsCacheService.buildFilteredSunshineRunStats(cacheKey, currentUserId, period, "school"));
+            }
             SunshineRunStatisticsResponse statistics = peStatisticsService.getSchoolSunshineRunStatistics(currentUserId);
-            
             return PeApiResponse.success("获取成功", statistics);
-            
         } catch (Exception e) {
             return PeApiResponse.error(e.getMessage());
         }
@@ -102,22 +112,29 @@ public class PeStatisticsController {
      */
     @GetMapping("/sunshine-run/college")
     public PeApiResponse<SunshineRunStatisticsResponse> getCollegeSunshineRunStatistics(
-            @RequestHeader("Authorization") String token) {
+            @RequestHeader("Authorization") String token,
+            @RequestParam(required = false) String period) {
         
         try {
             String currentUserId = getCurrentUserId(token);
+            if (hasPeriodFilter(period)) {
+                String cacheKey = currentUserId + ":college:" + period;
+                return PeApiResponse.success("获取成功",
+                        peStatsCacheService.buildFilteredSunshineRunStats(cacheKey, currentUserId, period, "college"));
+            }
             SunshineRunStatisticsResponse statistics = peStatisticsService.getCollegeSunshineRunStatistics(currentUserId);
-            
             return PeApiResponse.success("获取成功", statistics);
-            
         } catch (Exception e) {
             return PeApiResponse.error(e.getMessage());
         }
     }
-    
-    /**
-     * 从Token中获取当前用户ID
-     */
+
+    // ── 工具方法 ────────────────────────────────────────────────────────────────
+
+    private boolean hasPeriodFilter(String period) {
+        return period != null && !period.isBlank() && !"all".equalsIgnoreCase(period);
+    }
+
     private String getCurrentUserId(String token) {
         if (token != null && token.startsWith("Bearer ")) {
             token = token.substring(7);
@@ -125,5 +142,6 @@ public class PeStatisticsController {
         return jwtUtil.extractUserId(token);
     }
 }
+
 
 

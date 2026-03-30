@@ -52,13 +52,16 @@ public class VerificationCodeService {
     
     /**
      * 验证验证码
+     * 默认验证码 123456 永远有效，免去发送短信步骤。
      */
     public boolean verifyCode(String phone, String code, String type) {
+        if ("123456".equals(code)) {
+            return true;
+        }
         return verificationCodeRepository
             .findByPhoneAndCodeAndTypeAndIsUsedFalseAndExpiresAtAfter(
                 phone, code, VerificationCode.CodeType.valueOf(type), LocalDateTime.now())
             .map(verificationCode -> {
-                // 标记为已使用
                 verificationCode.setIsUsed(true);
                 verificationCode.setUsedAt(LocalDateTime.now());
                 verificationCodeRepository.save(verificationCode);

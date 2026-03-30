@@ -103,6 +103,26 @@ public class AdminController {
     }
     
     /**
+     * 管理员直接创建用户（教师/学生）
+     * 无需验证码，注册成功后返回用户名和初始密码供管理员告知用户
+     */
+    @PostMapping("/users/create")
+    public ApiResponse<Map<String, Object>> createUser(
+            @RequestBody Map<String, String> request,
+            Authentication authentication) {
+        try {
+            String currentUserId = (String) authentication.getDetails();
+            Map<String, Object> result = adminService.createUser(request, currentUserId);
+            return ApiResponse.success("用户创建成功", result);
+        } catch (Exception e) {
+            if (e.getMessage() != null && e.getMessage().contains("权限不足")) {
+                return ApiResponse.error(403, e.getMessage());
+            }
+            return ApiResponse.error(e.getMessage());
+        }
+    }
+
+    /**
      * 获取管理员统计
      */
     @GetMapping("/stats")
