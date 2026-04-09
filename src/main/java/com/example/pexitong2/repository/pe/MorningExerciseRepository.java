@@ -65,4 +65,16 @@ public interface MorningExerciseRepository extends JpaRepository<MorningExercise
            "WHERE (:school IS NULL OR u.school = :school) AND " +
            "(:college IS NULL OR u.departmentName = :college)")
     List<MorningExercise> findBySchoolAndCollege(@Param("school") String school, @Param("college") String college);
+
+    /** 统计大屏：日期范围内本校/本院早操（与列表过滤口径一致，按创建者 User 学校/院系） */
+    @Query("SELECT me FROM MorningExercise me " +
+           "LEFT JOIN User u ON me.createdBy = u.id " +
+           "WHERE me.date >= :startDate AND me.date <= :endDate AND " +
+           "(:school IS NULL OR u.school = :school) AND " +
+           "(:college IS NULL OR u.departmentName = :college) " +
+           "ORDER BY me.date ASC, me.startTime ASC")
+    List<MorningExercise> findForAttendanceDashboard(@Param("startDate") LocalDate startDate,
+                                                     @Param("endDate") LocalDate endDate,
+                                                     @Param("school") String school,
+                                                     @Param("college") String college);
 }

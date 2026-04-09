@@ -69,8 +69,8 @@ public class PeStatisticsService {
         );
         response.setTargets(targets);
         
-        // 获取本校所有学生
-        List<PeUser> schoolStudents = peUserRepository.findBySchool(school);
+        // 获取本校所有学生（PE 库 users1 中 role=STUDENT，与院系统计口径一致）
+        List<PeUser> schoolStudents = peUserRepository.findBySchoolAndRole(school, PeUser.Role.STUDENT);
         response.setTotalStudents(schoolStudents.size());
         
         // 计算整体达标率
@@ -151,16 +151,14 @@ public class PeStatisticsService {
         
         List<PeUser> targetStudents;
         
-        // 根据管理员类型确定数据范围
+        // 根据管理员类型确定数据范围（仅统计 PE 学生；院系与 users.department_name 对齐并兼容空格/大小写）
         if (admin.getUserType() == User.UserType.school_admin || admin.getUserType() == User.UserType.super_admin) {
-            // 校级管理员：获取全校学生数据
-            targetStudents = peUserRepository.findBySchool(school);
+            targetStudents = peUserRepository.findBySchoolAndRole(school, PeUser.Role.STUDENT);
             response.setCollege("全校所有院系");
         } else {
-            // 院级管理员：获取本院学生数据
-            String college = admin.getDepartmentName(); // 院级管理员的department_name对应院系
-            targetStudents = peUserRepository.findBySchoolAndCollege(school, college);
-            response.setCollege(college);
+            targetStudents = resolveCollegeStudentsForAdmin(admin, school);
+            String collegeLabel = admin.getDepartmentName() != null ? admin.getDepartmentName().trim() : "";
+            response.setCollege(collegeLabel.isEmpty() ? "未配置院系" : collegeLabel);
         }
         
         response.setTotalStudents(targetStudents.size());
@@ -311,7 +309,7 @@ public class PeStatisticsService {
         response.setScope("全校");
         
         // 获取本校所有学生
-        List<PeUser> schoolStudents = peUserRepository.findBySchool(school);
+        List<PeUser> schoolStudents = peUserRepository.findBySchoolAndRole(school, PeUser.Role.STUDENT);
         response.setTotalStudents(schoolStudents.size());
         
         // 计算整体统计
@@ -378,16 +376,13 @@ public class PeStatisticsService {
         
         List<PeUser> targetStudents;
         
-        // 根据管理员类型确定数据范围
         if (admin.getUserType() == User.UserType.school_admin || admin.getUserType() == User.UserType.super_admin) {
-            // 校级管理员：获取全校学生数据
-            targetStudents = peUserRepository.findBySchool(school);
+            targetStudents = peUserRepository.findBySchoolAndRole(school, PeUser.Role.STUDENT);
             response.setScope("全校所有院系");
         } else {
-            // 院级管理员：获取本院学生数据
-            String college = admin.getDepartmentName(); // 院级管理员的department_name对应院系
-            targetStudents = peUserRepository.findBySchoolAndCollege(school, college);
-            response.setScope(college);
+            targetStudents = resolveCollegeStudentsForAdmin(admin, school);
+            String collegeLabel = admin.getDepartmentName() != null ? admin.getDepartmentName().trim() : "";
+            response.setScope(collegeLabel.isEmpty() ? "未配置院系" : collegeLabel);
         }
         
         response.setTotalStudents(targetStudents.size());
@@ -433,6 +428,62 @@ public class PeStatisticsService {
         response.setGroupRankings(groupRankings);
         
         return response;
+    }
+
+    /**
+     * 院级管理员：users.department_name 与 PE 库 users1.college 对齐；仅统计 role=STUDENT。
+     * 依次尝试：忽略大小写+trim、去全部空白后比较小写。
+     */
+    private List<PeUser> resolveCollegeStudentsForAdmin(User admin, String school) {
+        if (admin.getUserType() != User.UserType.department_admin) {
+            throw new IllegalStateException("resolveCollegeStudentsForAdmin 仅适用于院级管理员");
+        }
+        String deptRaw = admin.getDepartmentName();
+        if (deptRaw == null || deptRaw.isBlank()) {
+            throw new RuntimeException(
+                "院级管理员未配置所属院系（users.department_name）。请在校级管理员「管理员管理」中补全院系名称，并与 PE 学生档案(users1.college)保持一致。");
+        }
+        final String dept = deptRaw.trim();
+        List<PeUser> schoolStudents = peUserRepository.findBySchoolAndRole(school, PeUser.Role.STUDENT);
+
+        List<PeUser> match = schoolStudents.stream()
+            .filter(u -> u.getCollege() != null && !u.getCollege().isBlank())
+            .filter(u -> dept.equalsIgnoreCase(u.getCollege().trim()))
+            .collect(Collectors.toList());
+        if (!match.isEmpty()) {
+            return match;
+        }
+
+        final String deptKey = normalizeCollegeKey(dept);
+        match = schoolStudents.stream()
+            .filter(u -> u.getCollege() != null && !u.getCollege().isBlank())
+            .filter(u -> normalizeCollegeKey(u.getCollege()).equals(deptKey))
+            .collect(Collectors.toList());
+        if (!match.isEmpty()) {
+            return match;
+        }
+
+        boolean hasOtherColleges = schoolStudents.stream()
+            .anyMatch(u -> u.getCollege() != null && !u.getCollege().isBlank());
+        if (hasOtherColleges) {
+            Set<String> samples = schoolStudents.stream()
+                .map(PeUser::getCollege)
+                .filter(Objects::nonNull)
+                .map(String::trim)
+                .filter(s -> !s.isEmpty())
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+            List<String> sampleList = samples.stream().limit(8).collect(Collectors.toList());
+            throw new RuntimeException(String.format(
+                "本院统计未匹配到学生：管理员院系为「%s」，与 PE 库中学生 college 字段不一致。本校已有 college 示例：%s。请在后台统一院系名称。",
+                dept, sampleList.isEmpty() ? "（无）" : String.join("、", sampleList)));
+        }
+
+        return Collections.emptyList();
+    }
+
+    private static String normalizeCollegeKey(String name) {
+        if (name == null) return "";
+        return name.replaceAll("\\s+", "").toLowerCase(Locale.ROOT);
     }
     
     /**

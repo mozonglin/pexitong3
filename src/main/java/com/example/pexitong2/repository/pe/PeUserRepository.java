@@ -44,6 +44,9 @@ public interface PeUserRepository extends JpaRepository<PeUser, String> {
     
     // 新增方法：按学校查询学生
     List<PeUser> findBySchool(String school);
+
+    /** 按学校与 PE 角色查询（统计口径一般仅学生） */
+    List<PeUser> findBySchoolAndRole(String school, PeUser.Role role);
     
     // 新增方法：按学校和院系查询学生
     List<PeUser> findBySchoolAndCollege(String school, String college);

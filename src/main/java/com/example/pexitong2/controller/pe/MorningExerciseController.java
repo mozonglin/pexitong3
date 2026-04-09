@@ -45,7 +45,26 @@ public class MorningExerciseController {
             return PeApiResponse.error(e.getMessage());
         }
     }
-    
+
+    /**
+     * 早操出勤率统计大屏（校级：院系+班级；院级：仅班级；出勤=已签退）
+     */
+    @GetMapping("/attendance-dashboard")
+    public PeApiResponse<MorningExerciseAttendanceDashboardResponse> getAttendanceDashboard(
+            @RequestParam(required = false) String startDate,
+            @RequestParam(required = false) String endDate,
+            @RequestHeader("Authorization") String token) {
+
+        try {
+            String currentUserId = getCurrentUserId(token);
+            MorningExerciseAttendanceDashboardResponse data =
+                morningExerciseService.getAttendanceDashboard(startDate, endDate, currentUserId);
+            return PeApiResponse.success("获取成功", data);
+        } catch (Exception e) {
+            return PeApiResponse.error(e.getMessage());
+        }
+    }
+
     /**
      * 获取单个早操活动详情
      */

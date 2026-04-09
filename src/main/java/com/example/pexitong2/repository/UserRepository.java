@@ -8,6 +8,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.util.List;
 import java.util.Optional;
 
 @Repository
@@ -60,4 +61,10 @@ public interface UserRepository extends JpaRepository<User, String> {
     
     // 新增方法：根据学校和用户类型查找用户
     Optional<User> findBySchoolAndUserType(String school, User.UserType userType);
+
+    // 根据学校和多种用户类型查找用户（用于教师列表查询）
+    List<User> findBySchoolAndUserTypeIn(String school, List<User.UserType> userTypes);
+
+    // 统计某学校指定角色集合的用户数量
+    long countBySchoolAndUserTypeIn(String school, List<User.UserType> userTypes);
 } 
