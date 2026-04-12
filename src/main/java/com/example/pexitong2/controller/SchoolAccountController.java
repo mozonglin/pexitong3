@@ -14,7 +14,8 @@ import org.springframework.web.bind.annotation.*;
 import java.util.*;
 
 /**
- * 超级管理员：按 checkuser 学校维度开户 / 新建学校（校管 + 预导入表）
+ * 超级管理员或校级管理员：按 checkuser 学校维度开户 / 新建学校
+ * 校级管理员仅能操作自己的学校，且不能创建新学校
  */
 @RestController
 @RequestMapping("/checkuser/school-account")
@@ -36,7 +37,7 @@ public class SchoolAccountController {
     @Autowired
     private PasswordEncoder passwordEncoder;
 
-    private void requireSuperAdmin(HttpServletRequest request) {
+    private User requireSchoolAdminOrAbove(HttpServletRequest request) {
         String header = request.getHeader("Authorization");
         if (header == null || !header.startsWith("Bearer ")) {
             throw new SecurityException("未提供认证 Token");
@@ -45,8 +46,26 @@ public class SchoolAccountController {
         String username = jwtUtil.extractUsername(token);
         User user = userRepository.findByUsername(username)
             .orElseThrow(() -> new SecurityException("用户不存在"));
+        if (user.getUserType() != User.UserType.super_admin
+                && user.getUserType() != User.UserType.school_admin) {
+            throw new SecurityException("权限不足，仅超级管理员或校级管理员可操作");
+        }
+        return user;
+    }
+
+    private void requireSuperAdmin(HttpServletRequest request) {
+        User user = requireSchoolAdminOrAbove(request);
         if (user.getUserType() != User.UserType.super_admin) {
             throw new SecurityException("权限不足，仅超级管理员可操作");
+        }
+    }
+
+    private void enforceSchoolScope(User admin, String school) {
+        if (admin.getUserType() == User.UserType.school_admin) {
+            String adminSchool = admin.getSchool();
+            if (adminSchool == null || !adminSchool.equals(school)) {
+                throw new SecurityException("校级管理员只能操作本校数据");
+            }
         }
     }
 
@@ -56,7 +75,9 @@ public class SchoolAccountController {
     @GetMapping("/school-modules")
     public ResponseEntity<ApiResponse<List<Map<String, Object>>>> listSchoolModules(HttpServletRequest request) {
         try {
-            requireSuperAdmin(request);
+            User admin = requireSchoolAdminOrAbove(request);
+            boolean isSchoolAdmin = admin.getUserType() == User.UserType.school_admin;
+            String adminSchool = admin.getSchool();
             List<Map<String, Object>> rows = jdbcTemplate.queryForList(
                 "SELECT school FROM (" +
                     "SELECT DISTINCT school FROM checkuser.checkstudent WHERE school IS NOT NULL AND TRIM(school) <> '' " +
@@ -67,6 +88,7 @@ public class SchoolAccountController {
             for (Map<String, Object> row : rows) {
                 String school = (String) row.get("school");
                 if (school == null || school.isBlank()) continue;
+                if (isSchoolAdmin && adminSchool != null && !adminSchool.equals(school)) continue;
                 Long studentCnt = jdbcTemplate.queryForObject(
                     "SELECT COUNT(*) FROM checkuser.checkstudent WHERE school = ?", Long.class, school);
                 Long preTeacherCnt = jdbcTemplate.queryForObject(
@@ -96,7 +118,8 @@ public class SchoolAccountController {
             @RequestParam("school") String school,
             HttpServletRequest request) {
         try {
-            requireSuperAdmin(request);
+            User admin = requireSchoolAdminOrAbove(request);
+            enforceSchoolScope(admin, school);
             if (school == null || school.isBlank()) {
                 return ResponseEntity.badRequest().body(ApiResponse.error("school 不能为空"));
             }
@@ -151,8 +174,9 @@ public class SchoolAccountController {
             @RequestBody Map<String, String> body,
             HttpServletRequest request) {
         try {
-            requireSuperAdmin(request);
+            User admin = requireSchoolAdminOrAbove(request);
             String school = body.get("school");
+            enforceSchoolScope(admin, school);
             String teacherId = body.get("teacherId");
             String password = body.get("password");
             String userTypeStr = body.get("userType");
@@ -192,8 +216,9 @@ public class SchoolAccountController {
             @RequestBody Map<String, String> body,
             HttpServletRequest request) {
         try {
-            requireSuperAdmin(request);
+            User admin = requireSchoolAdminOrAbove(request);
             String school = body.get("school");
+            enforceSchoolScope(admin, school);
             String college = body.get("college");
             String teacherId = body.get("teacherId");
             String name = body.get("name");

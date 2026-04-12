@@ -3,8 +3,17 @@ package com.example.pexitong2.controller.pe;
 import com.example.pexitong2.dto.pe.*;
 import com.example.pexitong2.service.pe.MorningExerciseService;
 import com.example.pexitong2.util.JwtUtil;
+import org.apache.poi.ss.usermodel.*;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.*;
 import org.springframework.web.bind.annotation.*;
+
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
+import java.util.*;
 
 /**
  * 早操管理控制器
@@ -173,6 +182,109 @@ public class MorningExerciseController {
         }
     }
     
+    /**
+     * 早操考勤统计导出 Excel（最多4个月）
+     */
+    @GetMapping("/attendance-dashboard/export")
+    public ResponseEntity<byte[]> exportAttendanceDashboard(
+            @RequestParam(required = false) String startDate,
+            @RequestParam(required = false) String endDate,
+            @RequestHeader("Authorization") String token) {
+        try {
+            String currentUserId = getCurrentUserId(token);
+
+            LocalDate end = (endDate != null && !endDate.isBlank())
+                    ? LocalDate.parse(endDate) : LocalDate.now();
+            LocalDate fourMonthsAgo = end.minusMonths(4);
+            LocalDate start = (startDate != null && !startDate.isBlank())
+                    ? LocalDate.parse(startDate) : fourMonthsAgo;
+            if (start.isBefore(fourMonthsAgo)) {
+                start = fourMonthsAgo;
+            }
+
+            String sd = start.format(DateTimeFormatter.ISO_LOCAL_DATE);
+            String ed = end.format(DateTimeFormatter.ISO_LOCAL_DATE);
+
+            MorningExerciseAttendanceDashboardResponse data =
+                    morningExerciseService.getAttendanceDashboard(sd, ed, currentUserId);
+
+            List<Map<String, Object>> rows = new ArrayList<>();
+            if (data.isShowCollegeStats() && data.getColleges() != null) {
+                for (var c : data.getColleges()) {
+                    Map<String, Object> m = new LinkedHashMap<>();
+                    m.put("college", c.getCollegeName());
+                    m.put("className", "—");
+                    m.put("headcount", c.getStudentHeadcount());
+                    m.put("totalSlots", c.getTotalSlots());
+                    m.put("presentSlots", c.getPresentSlots());
+                    m.put("absentSlots", c.getAbsentSlots());
+                    m.put("rate", String.format("%.2f%%", c.getAttendanceRatePercent()));
+                    rows.add(m);
+                }
+            }
+            if (data.getClasses() != null) {
+                for (var c : data.getClasses()) {
+                    Map<String, Object> m = new LinkedHashMap<>();
+                    m.put("college", c.getCollegeName());
+                    m.put("className", c.getClassName());
+                    m.put("headcount", c.getStudentHeadcount());
+                    m.put("totalSlots", c.getTotalSlots());
+                    m.put("presentSlots", c.getPresentSlots());
+                    m.put("absentSlots", c.getAbsentSlots());
+                    m.put("rate", String.format("%.2f%%", c.getAttendanceRatePercent()));
+                    rows.add(m);
+                }
+            }
+
+            byte[] bytes = buildExportExcel("早操考勤统计",
+                    new String[]{"学院", "班级", "学生人数", "应到人次", "实到人次", "缺勤人次", "出勤率"},
+                    rows, new String[]{"college", "className", "headcount", "totalSlots", "presentSlots", "absentSlots", "rate"});
+
+            String filename = java.net.URLEncoder.encode("早操考勤统计.xlsx", java.nio.charset.StandardCharsets.UTF_8).replace("+", "%20");
+            return ResponseEntity.ok()
+                    .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename*=UTF-8''" + filename)
+                    .contentType(MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
+                    .body(bytes);
+        } catch (Exception e) {
+            return ResponseEntity.internalServerError().build();
+        }
+    }
+
+    private byte[] buildExportExcel(String sheetName, String[] headers, List<Map<String, Object>> rows, String[] keys) throws IOException {
+        try (Workbook wb = new XSSFWorkbook(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+            Sheet sheet = wb.createSheet(sheetName);
+            CellStyle headerStyle = wb.createCellStyle();
+            Font headerFont = wb.createFont();
+            headerFont.setBold(true);
+            headerStyle.setFont(headerFont);
+            headerStyle.setFillForegroundColor(IndexedColors.LIGHT_CORNFLOWER_BLUE.getIndex());
+            headerStyle.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+
+            Row headerRow = sheet.createRow(0);
+            for (int i = 0; i < headers.length; i++) {
+                Cell cell = headerRow.createCell(i);
+                cell.setCellValue(headers[i]);
+                cell.setCellStyle(headerStyle);
+                sheet.setColumnWidth(i, 5000);
+            }
+            for (int r = 0; r < rows.size(); r++) {
+                Row row = sheet.createRow(r + 1);
+                Map<String, Object> data = rows.get(r);
+                for (int c = 0; c < keys.length; c++) {
+                    Object val = data.get(keys[c]);
+                    Cell cell = row.createCell(c);
+                    if (val instanceof Number) {
+                        cell.setCellValue(((Number) val).doubleValue());
+                    } else {
+                        cell.setCellValue(val != null ? val.toString() : "");
+                    }
+                }
+            }
+            wb.write(out);
+            return out.toByteArray();
+        }
+    }
+
     /**
      * 从Token中获取当前用户ID
      */

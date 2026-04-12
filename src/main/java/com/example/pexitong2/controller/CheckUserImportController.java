@@ -18,14 +18,14 @@ import java.io.IOException;
 import java.util.*;
 
 /**
- * checkuser 库数据导入接口（仅 super_admin 可用）
+ * checkuser 库数据导入接口（super_admin 和 school_admin 可用）
  *
  * GET  /checkuser/teacher-schools    → 公开接口，获取教师预导入库中的学校列表（注册页用）
- * GET  /checkuser/schools            → 查询各学校预导入学生/教师数量（需超管）
+ * GET  /checkuser/schools            → 查询各学校预导入学生/教师数量（需超管或校管）
  * GET  /checkuser/template/student   → 下载学生导入模板
  * GET  /checkuser/template/teacher   → 下载教师导入模板
- * POST /checkuser/import/student     → 上传学生 Excel，去重导入
- * POST /checkuser/import/teacher     → 上传教师 Excel，去重导入
+ * POST /checkuser/import/student     → 上传学生 Excel，两阶段导入（preview / confirm）
+ * POST /checkuser/import/teacher     → 上传教师 Excel，两阶段导入（preview / confirm）
  */
 @RestController
 @RequestMapping("/checkuser")
@@ -38,14 +38,27 @@ public class CheckUserImportController {
 
     // ── 权限校验 ──────────────────────────────────────────────────────────────
 
-    private void requireSuperAdmin(HttpServletRequest request) {
+    private User resolveCurrentUser(HttpServletRequest request) {
         String token = extractToken(request);
         String username = jwtUtil.extractUsername(token);
-        User user = userRepository.findByUsername(username)
+        return userRepository.findByUsername(username)
             .orElseThrow(() -> new SecurityException("用户不存在"));
+    }
+
+    private void requireSuperAdmin(HttpServletRequest request) {
+        User user = resolveCurrentUser(request);
         if (user.getUserType() != User.UserType.super_admin) {
             throw new SecurityException("权限不足，仅超级管理员可操作");
         }
+    }
+
+    private User requireSchoolAdminOrAbove(HttpServletRequest request) {
+        User user = resolveCurrentUser(request);
+        if (user.getUserType() != User.UserType.super_admin
+                && user.getUserType() != User.UserType.school_admin) {
+            throw new SecurityException("权限不足，仅超级管理员或校级管理员可操作");
+        }
+        return user;
     }
 
     private String extractToken(HttpServletRequest request) {
@@ -88,21 +101,31 @@ public class CheckUserImportController {
     @GetMapping("/schools")
     public ResponseEntity<ApiResponse<List<Map<String, Object>>>> getSchoolStats(HttpServletRequest request) {
         try {
-            requireSuperAdmin(request);
+            User admin = requireSchoolAdminOrAbove(request);
+            boolean isSchoolAdmin = admin.getUserType() == User.UserType.school_admin;
+            String adminSchool = admin.getSchool();
 
-            // 查询学生各学校数量
-            List<Map<String, Object>> studentRows = jdbcTemplate.queryForList(
-                "SELECT school, COUNT(*) AS cnt FROM checkuser.checkstudent GROUP BY school ORDER BY school");
+            List<Map<String, Object>> studentRows;
+            List<Map<String, Object>> teacherRows;
+
+            if (isSchoolAdmin && adminSchool != null && !adminSchool.isBlank()) {
+                studentRows = jdbcTemplate.queryForList(
+                    "SELECT school, COUNT(*) AS cnt FROM checkuser.checkstudent WHERE school = ? GROUP BY school", adminSchool);
+                teacherRows = jdbcTemplate.queryForList(
+                    "SELECT school, COUNT(*) AS cnt FROM checkuser.checkteacher WHERE school = ? GROUP BY school", adminSchool);
+            } else {
+                studentRows = jdbcTemplate.queryForList(
+                    "SELECT school, COUNT(*) AS cnt FROM checkuser.checkstudent GROUP BY school ORDER BY school");
+                teacherRows = jdbcTemplate.queryForList(
+                    "SELECT school, COUNT(*) AS cnt FROM checkuser.checkteacher GROUP BY school ORDER BY school");
+            }
+
             Map<String, Long> studentMap = new LinkedHashMap<>();
             for (Map<String, Object> row : studentRows) {
                 String school = (String) row.get("school");
                 Long cnt = ((Number) row.get("cnt")).longValue();
                 studentMap.put(school != null ? school : "", cnt);
             }
-
-            // 查询教师各学校数量
-            List<Map<String, Object>> teacherRows = jdbcTemplate.queryForList(
-                "SELECT school, COUNT(*) AS cnt FROM checkuser.checkteacher GROUP BY school ORDER BY school");
             Map<String, Long> teacherMap = new LinkedHashMap<>();
             for (Map<String, Object> row : teacherRows) {
                 String school = (String) row.get("school");
@@ -110,7 +133,6 @@ public class CheckUserImportController {
                 teacherMap.put(school != null ? school : "", cnt);
             }
 
-            // 合并学校列表
             Set<String> allSchools = new LinkedHashSet<>();
             allSchools.addAll(studentMap.keySet());
             allSchools.addAll(teacherMap.keySet());
@@ -139,7 +161,7 @@ public class CheckUserImportController {
     @GetMapping("/template/student")
     public ResponseEntity<byte[]> downloadStudentTemplate(HttpServletRequest request) {
         try {
-            requireSuperAdmin(request);
+            requireSchoolAdminOrAbove(request);
             String[] headers = {"学校", "学院", "班级", "学号", "姓名"};
             String[] example = {"济南校区", "电气学院", "电气工程及其自动化2021-1", "202100000001", "张三"};
             byte[] bytes = buildTemplate("学生导入模板", headers, example);
@@ -155,7 +177,7 @@ public class CheckUserImportController {
     @GetMapping("/template/teacher")
     public ResponseEntity<byte[]> downloadTeacherTemplate(HttpServletRequest request) {
         try {
-            requireSuperAdmin(request);
+            requireSchoolAdminOrAbove(request);
             String[] headers = {"学校", "学院", "工号", "姓名"};
             String[] example = {"济南校区", "体育学院", "20210001", "李四"};
             byte[] bytes = buildTemplate("教师导入模板", headers, example);
@@ -170,26 +192,89 @@ public class CheckUserImportController {
     // ── 导入数据 ──────────────────────────────────────────────────────────────
 
     /**
-     * 导入学生数据
-     * Excel 列顺序：学校 / 学院 / 班级 / 学号 / 姓名
-     * 去重依据：studentid
+     * 导入学生数据 - 两阶段模式
+     * mode=preview: 预检，返回新记录与重复记录列表
+     * mode=confirm: 确认导入，带上重复记录的处理决策
+     * 无 mode 参数时保持兼容：自动跳过重复
      */
     @PostMapping("/import/student")
     public ResponseEntity<ApiResponse<Map<String, Object>>> importStudents(
             @RequestParam("file") MultipartFile file,
+            @RequestParam(value = "mode", required = false) String mode,
+            @RequestParam(value = "overrideIds", required = false) String overrideIds,
             HttpServletRequest request) {
         try {
-            requireSuperAdmin(request);
+            User admin = requireSchoolAdminOrAbove(request);
             if (file.isEmpty()) return ResponseEntity.badRequest()
                 .body(ApiResponse.error("文件不能为空"));
 
+            boolean isSchoolAdmin = admin.getUserType() == User.UserType.school_admin;
+            String adminSchool = admin.getSchool();
+
             List<Map<String, String>> rows = parseExcel(file, 5);
-            int inserted = 0, skipped = 0;
             List<String> errors = new ArrayList<>();
 
+            if ("preview".equals(mode)) {
+                List<Map<String, Object>> newRecords = new ArrayList<>();
+                List<Map<String, Object>> duplicates = new ArrayList<>();
+
+                for (int i = 0; i < rows.size(); i++) {
+                    Map<String, String> row = rows.get(i);
+                    String school    = isSchoolAdmin ? adminSchool : row.get("0");
+                    String college   = row.get("1");
+                    String className = row.get("2");
+                    String studentId = row.get("3");
+                    String name      = row.get("4");
+
+                    if (isBlank(studentId) || isBlank(name)) {
+                        errors.add("第 " + (i + 2) + " 行：学号或姓名为空，已跳过");
+                        continue;
+                    }
+
+                    List<Map<String, Object>> existing = jdbcTemplate.queryForList(
+                        "SELECT school, college, class_name, studentid, name FROM checkuser.checkstudent WHERE studentid = ?",
+                        studentId);
+
+                    Map<String, Object> record = new LinkedHashMap<>();
+                    record.put("rowIndex", i);
+                    record.put("school", school);
+                    record.put("college", college);
+                    record.put("className", className);
+                    record.put("studentId", studentId);
+                    record.put("name", name);
+
+                    if (!existing.isEmpty()) {
+                        Map<String, Object> existingRow = existing.get(0);
+                        record.put("existingName", existingRow.get("name"));
+                        record.put("existingSchool", existingRow.get("school"));
+                        record.put("existingCollege", existingRow.get("college"));
+                        record.put("existingClassName", existingRow.get("class_name"));
+                        duplicates.add(record);
+                    } else {
+                        newRecords.add(record);
+                    }
+                }
+
+                Map<String, Object> result = new LinkedHashMap<>();
+                result.put("total", rows.size());
+                result.put("newCount", newRecords.size());
+                result.put("duplicateCount", duplicates.size());
+                result.put("newRecords", newRecords);
+                result.put("duplicates", duplicates);
+                result.put("errors", errors);
+                return ResponseEntity.ok(ApiResponse.success("预检完成", result));
+            }
+
+            // confirm 模式或无 mode（兼容旧逻辑）
+            Set<String> overrideSet = new HashSet<>();
+            if ("confirm".equals(mode) && overrideIds != null && !overrideIds.isBlank()) {
+                overrideSet.addAll(Arrays.asList(overrideIds.split(",")));
+            }
+
+            int inserted = 0, skipped = 0, updated = 0;
             for (int i = 0; i < rows.size(); i++) {
                 Map<String, String> row = rows.get(i);
-                String school    = row.get("0");
+                String school    = isSchoolAdmin ? adminSchool : row.get("0");
                 String college   = row.get("1");
                 String className = row.get("2");
                 String studentId = row.get("3");
@@ -204,12 +289,18 @@ public class CheckUserImportController {
                     continue;
                 }
 
-                // 去重：studentid 已存在则跳过
                 Integer count = jdbcTemplate.queryForObject(
                     "SELECT COUNT(*) FROM checkuser.checkstudent WHERE studentid = ?",
                     Integer.class, studentId);
                 if (count != null && count > 0) {
-                    skipped++;
+                    if (overrideSet.contains(studentId)) {
+                        jdbcTemplate.update(
+                            "UPDATE checkuser.checkstudent SET school=?, college=?, class_name=?, name=? WHERE studentid=?",
+                            school, college, className, name, studentId);
+                        updated++;
+                    } else {
+                        skipped++;
+                    }
                     continue;
                 }
 
@@ -222,6 +313,7 @@ public class CheckUserImportController {
             Map<String, Object> result = new LinkedHashMap<>();
             result.put("total",    rows.size());
             result.put("inserted", inserted);
+            result.put("updated",  updated);
             result.put("skipped",  skipped);
             result.put("errors",   errors);
             return ResponseEntity.ok(ApiResponse.success("导入完成", result));
@@ -235,26 +327,84 @@ public class CheckUserImportController {
     }
 
     /**
-     * 导入教师数据
-     * Excel 列顺序：学校 / 学院 / 工号 / 姓名
-     * 去重依据：teacherid
+     * 导入教师数据 - 两阶段模式
+     * mode=preview: 预检，返回新记录与重复记录列表
+     * mode=confirm: 确认导入，带上重复记录的处理决策
      */
     @PostMapping("/import/teacher")
     public ResponseEntity<ApiResponse<Map<String, Object>>> importTeachers(
             @RequestParam("file") MultipartFile file,
+            @RequestParam(value = "mode", required = false) String mode,
+            @RequestParam(value = "overrideIds", required = false) String overrideIds,
             HttpServletRequest request) {
         try {
-            requireSuperAdmin(request);
+            User admin = requireSchoolAdminOrAbove(request);
             if (file.isEmpty()) return ResponseEntity.badRequest()
                 .body(ApiResponse.error("文件不能为空"));
 
+            boolean isSchoolAdmin = admin.getUserType() == User.UserType.school_admin;
+            String adminSchool = admin.getSchool();
+
             List<Map<String, String>> rows = parseExcel(file, 4);
-            int inserted = 0, skipped = 0;
             List<String> errors = new ArrayList<>();
 
+            if ("preview".equals(mode)) {
+                List<Map<String, Object>> newRecords = new ArrayList<>();
+                List<Map<String, Object>> duplicates = new ArrayList<>();
+
+                for (int i = 0; i < rows.size(); i++) {
+                    Map<String, String> row = rows.get(i);
+                    String school    = isSchoolAdmin ? adminSchool : row.get("0");
+                    String college   = row.get("1");
+                    String teacherId = row.get("2");
+                    String name      = row.get("3");
+
+                    if (isBlank(teacherId) || isBlank(name)) {
+                        errors.add("第 " + (i + 2) + " 行：工号或姓名为空，已跳过");
+                        continue;
+                    }
+
+                    List<Map<String, Object>> existing = jdbcTemplate.queryForList(
+                        "SELECT school, college, teacherid, name FROM checkuser.checkteacher WHERE teacherid = ?",
+                        teacherId);
+
+                    Map<String, Object> record = new LinkedHashMap<>();
+                    record.put("rowIndex", i);
+                    record.put("school", school);
+                    record.put("college", college);
+                    record.put("teacherId", teacherId);
+                    record.put("name", name);
+
+                    if (!existing.isEmpty()) {
+                        Map<String, Object> existingRow = existing.get(0);
+                        record.put("existingName", existingRow.get("name"));
+                        record.put("existingSchool", existingRow.get("school"));
+                        record.put("existingCollege", existingRow.get("college"));
+                        duplicates.add(record);
+                    } else {
+                        newRecords.add(record);
+                    }
+                }
+
+                Map<String, Object> result = new LinkedHashMap<>();
+                result.put("total", rows.size());
+                result.put("newCount", newRecords.size());
+                result.put("duplicateCount", duplicates.size());
+                result.put("newRecords", newRecords);
+                result.put("duplicates", duplicates);
+                result.put("errors", errors);
+                return ResponseEntity.ok(ApiResponse.success("预检完成", result));
+            }
+
+            Set<String> overrideSet = new HashSet<>();
+            if ("confirm".equals(mode) && overrideIds != null && !overrideIds.isBlank()) {
+                overrideSet.addAll(Arrays.asList(overrideIds.split(",")));
+            }
+
+            int inserted = 0, skipped = 0, updated = 0;
             for (int i = 0; i < rows.size(); i++) {
                 Map<String, String> row = rows.get(i);
-                String school    = row.get("0");
+                String school    = isSchoolAdmin ? adminSchool : row.get("0");
                 String college   = row.get("1");
                 String teacherId = row.get("2");
                 String name      = row.get("3");
@@ -272,7 +422,14 @@ public class CheckUserImportController {
                     "SELECT COUNT(*) FROM checkuser.checkteacher WHERE teacherid = ?",
                     Integer.class, teacherId);
                 if (count != null && count > 0) {
-                    skipped++;
+                    if (overrideSet.contains(teacherId)) {
+                        jdbcTemplate.update(
+                            "UPDATE checkuser.checkteacher SET school=?, college=?, name=? WHERE teacherid=?",
+                            school, college, name, teacherId);
+                        updated++;
+                    } else {
+                        skipped++;
+                    }
                     continue;
                 }
 
@@ -285,6 +442,7 @@ public class CheckUserImportController {
             Map<String, Object> result = new LinkedHashMap<>();
             result.put("total",    rows.size());
             result.put("inserted", inserted);
+            result.put("updated",  updated);
             result.put("skipped",  skipped);
             result.put("errors",   errors);
             return ResponseEntity.ok(ApiResponse.success("导入完成", result));

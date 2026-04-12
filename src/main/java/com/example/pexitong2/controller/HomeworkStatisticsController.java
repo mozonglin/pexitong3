@@ -4,11 +4,15 @@ import com.example.pexitong2.dto.ApiResponse;
 import com.example.pexitong2.service.HomeworkStatsCacheService;
 import com.example.pexitong2.util.JwtUtil;
 import jakarta.servlet.http.HttpServletRequest;
+import org.apache.poi.ss.usermodel.*;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.ResponseEntity;
+import org.springframework.http.*;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.web.bind.annotation.*;
 
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.util.*;
 
 /**
@@ -347,6 +351,90 @@ public class HomeworkStatisticsController {
             return ResponseEntity.ok(ApiResponse.success("获取成功", rows));
         } catch (Exception e) {
             return ResponseEntity.internalServerError().body(ApiResponse.error("查询失败: " + e.getMessage()));
+        }
+    }
+
+    // ── 6. 导出 Excel ──────────────────────────────────────────────────────────────
+    @GetMapping("/export")
+    public ResponseEntity<byte[]> exportExcel(
+            HttpServletRequest request,
+            @RequestParam(required = false) String period) {
+        AdminContext ctx;
+        try {
+            ctx = resolveAdmin(request);
+        } catch (SecurityException e) {
+            return ResponseEntity.status(403).build();
+        }
+        try {
+            String effectivePeriod = "month";
+            if (hasPeriodFilter(period)) {
+                if ("today".equals(period) || "week".equals(period) || "month".equals(period)) {
+                    effectivePeriod = period;
+                }
+            }
+
+            Object[] scope = buildUserScope(ctx);
+            String where = (String) scope[0];
+            Object[] params = (Object[]) scope[1];
+            String joinWhere = where.replace("u.", "u1.");
+            String df = getDateCondition("h.timestamp", effectivePeriod);
+
+            String sql = "SELECT u1.name, u1.student_id, u1.school, u1.college, u1.class_name, " +
+                    "COUNT(*) AS record_count, COALESCE(SUM(h.`count`), 0) AS total_reps " +
+                    "FROM homework_scores h " +
+                    "JOIN users1 u1 ON u1.student_id = h.student_id " +
+                    "WHERE " + df + " AND " + joinWhere +
+                    " GROUP BY u1.student_id, u1.name, u1.school, u1.college, u1.class_name " +
+                    "ORDER BY total_reps DESC";
+            List<Map<String, Object>> rows = jdbcTemplate.queryForList(sql, params);
+
+            byte[] bytes = buildExportExcel("课后作业统计",
+                    new String[]{"姓名", "学号", "学校", "学院", "班级", "作业次数", "总次数"},
+                    rows, new String[]{"name", "student_id", "school", "college", "class_name", "record_count", "total_reps"});
+
+            String filename = java.net.URLEncoder.encode("课后作业统计.xlsx", java.nio.charset.StandardCharsets.UTF_8).replace("+", "%20");
+            return ResponseEntity.ok()
+                    .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename*=UTF-8''" + filename)
+                    .contentType(MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
+                    .body(bytes);
+        } catch (Exception e) {
+            return ResponseEntity.internalServerError().build();
+        }
+    }
+
+    private byte[] buildExportExcel(String sheetName, String[] headers, List<Map<String, Object>> rows, String[] keys) throws IOException {
+        try (Workbook wb = new XSSFWorkbook(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+            Sheet sheet = wb.createSheet(sheetName);
+            CellStyle headerStyle = wb.createCellStyle();
+            Font headerFont = wb.createFont();
+            headerFont.setBold(true);
+            headerStyle.setFont(headerFont);
+            headerStyle.setFillForegroundColor(IndexedColors.LIGHT_CORNFLOWER_BLUE.getIndex());
+            headerStyle.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+
+            Row headerRow = sheet.createRow(0);
+            for (int i = 0; i < headers.length; i++) {
+                Cell cell = headerRow.createCell(i);
+                cell.setCellValue(headers[i]);
+                cell.setCellStyle(headerStyle);
+                sheet.setColumnWidth(i, 5000);
+            }
+
+            for (int r = 0; r < rows.size(); r++) {
+                Row row = sheet.createRow(r + 1);
+                Map<String, Object> data = rows.get(r);
+                for (int c = 0; c < keys.length; c++) {
+                    Object val = data.get(keys[c]);
+                    Cell cell = row.createCell(c);
+                    if (val instanceof Number) {
+                        cell.setCellValue(((Number) val).doubleValue());
+                    } else {
+                        cell.setCellValue(val != null ? val.toString() : "");
+                    }
+                }
+            }
+            wb.write(out);
+            return out.toByteArray();
         }
     }
 
