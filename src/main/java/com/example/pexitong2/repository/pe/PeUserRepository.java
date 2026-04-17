@@ -22,13 +22,44 @@ public interface PeUserRepository extends JpaRepository<PeUser, String> {
     @Query("SELECT u FROM PeUser u WHERE " +
            "(:search IS NULL OR u.name LIKE %:search% OR u.studentId LIKE %:search%) AND " +
            "(:role IS NULL OR u.role = :role) AND " +
-           "(:school IS NULL OR u.school LIKE %:school%) AND " +
-           "(:college IS NULL OR u.college LIKE %:college%)")
+           "(:school IS NULL OR u.school = :school) AND " +
+           "(:college IS NULL OR u.college = :college) AND " +
+           "(:className IS NULL OR u.className = :className)")
     Page<PeUser> findUsersWithFilters(@Param("search") String search,
                                      @Param("role") PeUser.Role role,
                                      @Param("school") String school,
                                      @Param("college") String college,
+                                     @Param("className") String className,
                                      Pageable pageable);
+
+    /** 聚合查询：按学校分组统计人数（原生SQL） */
+    @Query(value = "SELECT school AS name, COUNT(*) AS cnt FROM users1 " +
+           "WHERE school IS NOT NULL AND school != '' GROUP BY school ORDER BY cnt DESC",
+           nativeQuery = true)
+    List<Object[]> countGroupBySchool();
+
+    /** 聚合查询：按学院分组统计人数（原生SQL，指定学校） */
+    @Query(value = "SELECT college AS name, COUNT(*) AS cnt, " +
+           "SUM(CASE WHEN role = 'CHECKER' THEN 1 ELSE 0 END) AS checkerCnt, " +
+           "SUM(CASE WHEN role = 'SUB_CHECKER' THEN 1 ELSE 0 END) AS subCheckerCnt " +
+           "FROM users1 WHERE school = :school AND college IS NOT NULL AND college != '' " +
+           "GROUP BY college ORDER BY cnt DESC",
+           nativeQuery = true)
+    List<Object[]> countGroupByCollege(@Param("school") String school);
+
+    /** 聚合查询：按班级分组统计人数（原生SQL，指定学校+学院） */
+    @Query(value = "SELECT class_name AS name, COUNT(*) AS cnt, " +
+           "SUM(CASE WHEN role = 'CHECKER' THEN 1 ELSE 0 END) AS checkerCnt, " +
+           "SUM(CASE WHEN role = 'SUB_CHECKER' THEN 1 ELSE 0 END) AS subCheckerCnt " +
+           "FROM users1 WHERE school = :school AND college = :college " +
+           "GROUP BY class_name ORDER BY class_name",
+           nativeQuery = true)
+    List<Object[]> countGroupByClass(@Param("school") String school, @Param("college") String college);
+
+    /** 聚合查询：指定学校下有多少个学院（原生SQL） */
+    @Query(value = "SELECT COUNT(DISTINCT college) FROM users1 WHERE school = :school AND college IS NOT NULL AND college != ''",
+           nativeQuery = true)
+    long countDistinctCollegeBySchool(@Param("school") String school);
     
     @Query("SELECT COUNT(u) FROM PeUser u WHERE " +
            "(:school IS NULL OR u.school = :school) AND " +

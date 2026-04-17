@@ -6,6 +6,9 @@ import com.example.pexitong2.util.JwtUtil;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
+import java.util.Map;
+
 /**
  * PE用户管理控制器
  */
@@ -21,7 +24,7 @@ public class PeUserController {
     private JwtUtil jwtUtil;
     
     /**
-     * 获取用户列表
+     * 获取用户列表（支持 className 过滤）
      */
     @GetMapping
     public PeApiResponse<PageResponse<PeUserResponse>> getUsers(
@@ -31,16 +34,76 @@ public class PeUserController {
             @RequestParam(required = false) String role,
             @RequestParam(required = false) String school,
             @RequestParam(required = false) String college,
+            @RequestParam(required = false) String className,
             @RequestHeader("Authorization") String token) {
         
         try {
             String currentUserId = getCurrentUserId(token);
             
             PageResponse<PeUserResponse> users = userService.getUsers(
-                page, pageSize, search, role, school, college, currentUserId);
+                page, pageSize, search, role, school, college, className, currentUserId);
             
             return PeApiResponse.success("获取成功", users);
             
+        } catch (Exception e) {
+            return PeApiResponse.error(e.getMessage());
+        }
+    }
+
+    /**
+     * 获取当前用户权限信息（前端据此决定起始层级）
+     */
+    @GetMapping("/permission-info")
+    public PeApiResponse<Map<String, Object>> getPermissionInfo(
+            @RequestHeader("Authorization") String token) {
+        try {
+            String currentUserId = getCurrentUserId(token);
+            return PeApiResponse.success("获取成功", userService.getPermissionInfo(currentUserId));
+        } catch (Exception e) {
+            return PeApiResponse.error(e.getMessage());
+        }
+    }
+
+    /**
+     * 获取学校列表（聚合统计）
+     */
+    @GetMapping("/schools")
+    public PeApiResponse<List<Map<String, Object>>> getSchools(
+            @RequestHeader("Authorization") String token) {
+        try {
+            String currentUserId = getCurrentUserId(token);
+            return PeApiResponse.success("获取成功", userService.getSchoolList(currentUserId));
+        } catch (Exception e) {
+            return PeApiResponse.error(e.getMessage());
+        }
+    }
+
+    /**
+     * 获取学院列表（聚合统计，指定学校）
+     */
+    @GetMapping("/colleges")
+    public PeApiResponse<List<Map<String, Object>>> getColleges(
+            @RequestParam String school,
+            @RequestHeader("Authorization") String token) {
+        try {
+            String currentUserId = getCurrentUserId(token);
+            return PeApiResponse.success("获取成功", userService.getCollegeList(school, currentUserId));
+        } catch (Exception e) {
+            return PeApiResponse.error(e.getMessage());
+        }
+    }
+
+    /**
+     * 获取班级列表（聚合统计，指定学校+学院）
+     */
+    @GetMapping("/classes")
+    public PeApiResponse<List<Map<String, Object>>> getClasses(
+            @RequestParam String school,
+            @RequestParam String college,
+            @RequestHeader("Authorization") String token) {
+        try {
+            String currentUserId = getCurrentUserId(token);
+            return PeApiResponse.success("获取成功", userService.getClassList(school, college, currentUserId));
         } catch (Exception e) {
             return PeApiResponse.error(e.getMessage());
         }

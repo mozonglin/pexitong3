@@ -1,6 +1,7 @@
 package com.example.pexitong2.service.pe;
 
 import com.example.pexitong2.dto.pe.*;
+import com.example.pexitong2.entity.User;
 import com.example.pexitong2.entity.pe.PeUser;
 import com.example.pexitong2.repository.pe.PeUserRepository;
 import com.example.pexitong2.repository.pe.PointsRecordRepository;
@@ -12,7 +13,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
@@ -31,28 +35,24 @@ public class PeUserService {
     private PePermissionService permissionService;
     
     /**
-     * 获取用户列表
+     * 获取用户列表（支持 className 过滤）
      */
     public PageResponse<PeUserResponse> getUsers(
             int page, int pageSize, String search, String role, 
-            String school, String college, String currentUserId) {
+            String school, String college, String className, String currentUserId) {
         
-        // 验证权限
         permissionService.validatePeManagementPermission(currentUserId);
         
-        // 获取权限范围
         String allowedSchool = permissionService.getAllowedSchool(currentUserId);
         String allowedCollege = permissionService.getAllowedCollege(currentUserId);
         
-        // 应用权限过滤
         String filteredSchool = allowedSchool != null ? allowedSchool : school;
         String filteredCollege = allowedCollege != null ? allowedCollege : college;
         
         Pageable pageable = PageRequest.of(page - 1, pageSize);
         
-        // 解析角色参数，增加错误处理
         PeUser.Role roleEnum = null;
-        if (role != null) {
+        if (role != null && !role.isEmpty()) {
             try {
                 roleEnum = PeUser.Role.valueOf(role.toUpperCase());
             } catch (IllegalArgumentException e) {
@@ -61,13 +61,103 @@ public class PeUserService {
         }
         
         Page<PeUser> userPage = peUserRepository.findUsersWithFilters(
-            search, roleEnum, filteredSchool, filteredCollege, pageable);
+            search, roleEnum, filteredSchool, filteredCollege, className, pageable);
         
         List<PeUserResponse> responses = userPage.getContent().stream()
             .map(PeUserResponse::new)
             .collect(Collectors.toList());
         
         return new PageResponse<>(responses, userPage.getTotalElements(), page, pageSize);
+    }
+
+    /**
+     * 获取当前用户的权限信息（供前端判断起始层级）
+     */
+    public Map<String, Object> getPermissionInfo(String currentUserId) {
+        permissionService.validatePeManagementPermission(currentUserId);
+        User user = permissionService.getUser(currentUserId);
+        
+        Map<String, Object> info = new HashMap<>();
+        info.put("userType", user.getUserType().name());
+        info.put("school", user.getSchool());
+        info.put("departmentName", user.getDepartmentName());
+        return info;
+    }
+
+    /**
+     * 获取学校列表（聚合统计）
+     * 超管：全部学校；校管/院管：仅自己学校
+     */
+    public List<Map<String, Object>> getSchoolList(String currentUserId) {
+        permissionService.validatePeManagementPermission(currentUserId);
+        
+        String allowedSchool = permissionService.getAllowedSchool(currentUserId);
+        
+        List<Object[]> rows = peUserRepository.countGroupBySchool();
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (Object[] row : rows) {
+            String schoolName = (String) row[0];
+            if (schoolName == null || schoolName.isEmpty()) continue;
+            if (allowedSchool != null && !allowedSchool.equals(schoolName)) continue;
+            long studentCount = ((Number) row[1]).longValue();
+            long collegeCount = peUserRepository.countDistinctCollegeBySchool(schoolName);
+            Map<String, Object> item = new HashMap<>();
+            item.put("name", schoolName);
+            item.put("studentCount", studentCount);
+            item.put("collegeCount", collegeCount);
+            result.add(item);
+        }
+        return result;
+    }
+
+    /**
+     * 获取学院列表（聚合统计，指定学校）
+     * 超管/校管：该校全部学院；院管：仅自己学院
+     */
+    public List<Map<String, Object>> getCollegeList(String school, String currentUserId) {
+        permissionService.validatePeManagementPermission(currentUserId);
+        
+        String allowedSchool = permissionService.getAllowedSchool(currentUserId);
+        String allowedCollege = permissionService.getAllowedCollege(currentUserId);
+        String targetSchool = allowedSchool != null ? allowedSchool : school;
+        
+        List<Object[]> rows = peUserRepository.countGroupByCollege(targetSchool);
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (Object[] row : rows) {
+            String collegeName = (String) row[0];
+            if (allowedCollege != null && !allowedCollege.equals(collegeName)) continue;
+            Map<String, Object> item = new HashMap<>();
+            item.put("name", collegeName);
+            item.put("studentCount", ((Number) row[1]).longValue());
+            item.put("checkerCount", ((Number) row[2]).longValue());
+            item.put("subCheckerCount", ((Number) row[3]).longValue());
+            result.add(item);
+        }
+        return result;
+    }
+
+    /**
+     * 获取班级列表（聚合统计，指定学校+学院）
+     */
+    public List<Map<String, Object>> getClassList(String school, String college, String currentUserId) {
+        permissionService.validatePeManagementPermission(currentUserId);
+        
+        String allowedSchool = permissionService.getAllowedSchool(currentUserId);
+        String allowedCollege = permissionService.getAllowedCollege(currentUserId);
+        String targetSchool = allowedSchool != null ? allowedSchool : school;
+        String targetCollege = allowedCollege != null ? allowedCollege : college;
+        
+        List<Object[]> rows = peUserRepository.countGroupByClass(targetSchool, targetCollege);
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (Object[] row : rows) {
+            Map<String, Object> item = new HashMap<>();
+            item.put("name", row[0] != null ? row[0] : "");
+            item.put("studentCount", ((Number) row[1]).longValue());
+            item.put("checkerCount", ((Number) row[2]).longValue());
+            item.put("subCheckerCount", ((Number) row[3]).longValue());
+            result.add(item);
+        }
+        return result;
     }
     
     /**
