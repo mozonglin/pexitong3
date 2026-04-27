@@ -24,10 +24,11 @@ public class PePermissionService {
             return false;
         }
         
-        // 管理员级别的用户可以访问PE管理端
+        // 管理员级别的用户和辅导员可以访问PE管理端
         return user.getUserType() == User.UserType.school_admin || 
                user.getUserType() == User.UserType.super_admin ||
-               user.getUserType() == User.UserType.department_admin;
+               user.getUserType() == User.UserType.department_admin ||
+               user.getUserType() == User.UserType.counselor;
     }
     
     /**
@@ -46,8 +47,9 @@ public class PePermissionService {
         if (user.getUserType() == User.UserType.super_admin) {
             return null; // 超级管理员可以管理所有学校
         } else if (user.getUserType() == User.UserType.school_admin || 
-                   user.getUserType() == User.UserType.department_admin) {
-            return user.getSchool(); // 校级管理员和院级管理员只能管理本校
+                   user.getUserType() == User.UserType.department_admin ||
+                   user.getUserType() == User.UserType.counselor) {
+            return user.getSchool(); // 校级管理员、院级管理员和辅导员只能管理本校
         }
         
         throw new RuntimeException("权限不足");
@@ -69,8 +71,9 @@ public class PePermissionService {
         if (user.getUserType() == User.UserType.super_admin || 
             user.getUserType() == User.UserType.school_admin) {
             return null; // 超级管理员和校级管理员可以管理该校所有学院
-        } else if (user.getUserType() == User.UserType.department_admin) {
-            return user.getDepartmentName(); // 院级管理员只能管理本学院
+        } else if (user.getUserType() == User.UserType.department_admin ||
+                   user.getUserType() == User.UserType.counselor) {
+            return user.getDepartmentName(); // 院级管理员和辅导员只能管理本学院
         }
         
         throw new RuntimeException("权限不足");
@@ -125,7 +128,7 @@ public class PePermissionService {
     
     /**
      * 验证用户是否有早操发布权限
-     * 只有院级管理员可以发布早操活动
+     * 院级管理员和辅导员可以发布早操活动
      */
     public boolean hasMorningExercisePublishPermission(String userId) {
         User user = userRepository.findById(userId).orElse(null);
@@ -133,8 +136,8 @@ public class PePermissionService {
             return false;
         }
         
-        // 只有院级管理员可以发布早操活动
-        return user.getUserType() == User.UserType.department_admin;
+        return user.getUserType() == User.UserType.department_admin ||
+               user.getUserType() == User.UserType.counselor;
     }
     
     /**
@@ -142,7 +145,7 @@ public class PePermissionService {
      */
     public void validateMorningExercisePublishPermission(String userId) {
         if (!hasMorningExercisePublishPermission(userId)) {
-            throw new RuntimeException("权限不足：只有院级管理员可以发布早操活动");
+            throw new RuntimeException("权限不足：只有院级管理员或辅导员可以发布早操活动");
         }
     }
     
@@ -161,7 +164,7 @@ public class PePermissionService {
         // 检查是否同学院
         if (!currentUser.getSchool().equals(creator.getSchool()) || 
             !currentUser.getDepartmentName().equals(creator.getDepartmentName())) {
-            throw new RuntimeException("权限不足：只能修改本学院管理员创建的早操活动");
+            throw new RuntimeException("权限不足：只能修改本学院管理员或辅导员创建的早操活动");
         }
     }
 }

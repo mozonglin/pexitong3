@@ -52,7 +52,7 @@ public class MorningExerciseService {
     private PeUserRepository peUserRepository;
 
     private static final String NOTICE_SCHOOL_ADMIN =
-        "早操活动仅院级管理员可发布与维护；校级管理员可查看本校早操出勤统计。\n"
+        "早操活动由院级管理员或辅导员发布与维护；校级管理员可查看本校早操出勤统计。\n"
             + "说明：院系统计、班级统计均基于所选日期范围内已实际发布的早操场次；仅当有院系发布了场次时才会出现对应院系（及班级）行，"
             + "尚未发布早操的学院不会出现在表中，并非权限限制。";
     private static final String NOTICE_DEPT_ADMIN =
@@ -110,7 +110,7 @@ public class MorningExerciseService {
     public MorningExerciseResponse createMorningExercise(
             MorningExerciseRequest request, String currentUserId) {
         
-        // 验证早操发布权限（只有院级管理员可以发布）
+        // 验证早操发布权限（院级管理员和辅导员可以发布）
         permissionService.validateMorningExercisePublishPermission(currentUserId);
         
         // 验证请求参数
@@ -163,7 +163,7 @@ public class MorningExerciseService {
         MorningExercise exercise = morningExerciseRepository.findById(id)
             .orElseThrow(() -> new RuntimeException("早操活动不存在"));
         
-        // 验证修改权限（只有创建者所在学院的院级管理员可以修改）
+        // 验证修改权限（只有创建者所在学院的院级管理员或辅导员可以修改）
         permissionService.validateMorningExerciseModifyPermission(currentUserId, exercise.getCreatedBy());
         
         // 验证请求参数
@@ -202,7 +202,7 @@ public class MorningExerciseService {
         MorningExercise exercise = morningExerciseRepository.findById(id)
             .orElseThrow(() -> new RuntimeException("早操活动不存在"));
         
-        // 验证删除权限（只有创建者所在学院的院级管理员可以删除）
+        // 验证删除权限（只有创建者所在学院的院级管理员或辅导员可以删除）
         permissionService.validateMorningExerciseModifyPermission(currentUserId, exercise.getCreatedBy());
         
         // 检查是否有关联的考勤记录

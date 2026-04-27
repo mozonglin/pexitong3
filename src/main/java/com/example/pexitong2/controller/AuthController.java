@@ -1,6 +1,8 @@
 package com.example.pexitong2.controller;
 
 import com.example.pexitong2.dto.*;
+import com.example.pexitong2.entity.User;
+import com.example.pexitong2.repository.UserRepository;
 import com.example.pexitong2.service.AuthService;
 import com.example.pexitong2.service.VerificationCodeService;
 import com.example.pexitong2.util.JwtUtil;
@@ -8,7 +10,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.Map;
+import java.util.*;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/auth")
@@ -22,6 +25,9 @@ public class AuthController {
 
     @Autowired
     private JwtUtil jwtUtil;
+
+    @Autowired
+    private UserRepository userRepository;
 
     /**
      * 发送验证码
@@ -102,6 +108,71 @@ public class AuthController {
             );
             
             return ResponseEntity.ok(ApiResponse.success("令牌刷新成功", result));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(ApiResponse.error(400, e.getMessage()));
+        }
+    }
+
+    @GetMapping("/schools")
+    public ResponseEntity<ApiResponse<List<String>>> getSchools() {
+        try {
+            List<String> schools = userRepository.findDistinctSchools();
+            return ResponseEntity.ok(ApiResponse.success("获取学校列表成功", schools));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(ApiResponse.error(400, e.getMessage()));
+        }
+    }
+
+    @GetMapping("/users-by-school")
+    public ResponseEntity<ApiResponse<List<Map<String, String>>>> getUsersBySchool(@RequestParam String school) {
+        try {
+            List<User> users = userRepository.findNonStudentUsersBySchool(school);
+            List<Map<String, String>> result = users.stream().map(u -> {
+                Map<String, String> m = new LinkedHashMap<>();
+                m.put("username", u.getUsername());
+                m.put("realName", u.getRealName());
+                m.put("userType", u.getUserType().name());
+                return m;
+            }).collect(Collectors.toList());
+            return ResponseEntity.ok(ApiResponse.success("获取用户列表成功", result));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(ApiResponse.error(400, e.getMessage()));
+        }
+    }
+
+    @PostMapping("/impersonate")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> impersonate(
+            @RequestHeader("Authorization") String authHeader,
+            @RequestBody Map<String, String> request) {
+        try {
+            String token = authHeader.startsWith("Bearer ") ? authHeader.substring(7) : authHeader;
+            String callerType = jwtUtil.extractUserType(token);
+
+            if (!"super_admin".equals(callerType)) {
+                return ResponseEntity.status(403).body(ApiResponse.error(403, "仅超级管理员可执行此操作"));
+            }
+
+            String targetUserId = request.get("targetUserId");
+            User target = userRepository.findById(targetUserId)
+                    .orElseThrow(() -> new RuntimeException("目标用户不存在"));
+
+            String impersonateToken = jwtUtil.generateToken(
+                    target.getUsername(), target.getId(), target.getUserType().name());
+
+            Map<String, Object> userInfo = new HashMap<>();
+            userInfo.put("id", target.getId());
+            userInfo.put("username", target.getUsername());
+            userInfo.put("realName", target.getRealName());
+            userInfo.put("userType", target.getUserType().name());
+            userInfo.put("school", target.getSchool());
+            userInfo.put("departmentName", target.getDepartmentName());
+
+            Map<String, Object> result = new HashMap<>();
+            result.put("token", impersonateToken);
+            result.put("user", userInfo);
+            result.put("expiresAt", jwtUtil.getExpirationDateTime(impersonateToken).toString());
+
+            return ResponseEntity.ok(ApiResponse.success("角色切换成功", result));
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(ApiResponse.error(400, e.getMessage()));
         }

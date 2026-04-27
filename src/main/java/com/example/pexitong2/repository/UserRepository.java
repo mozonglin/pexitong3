@@ -67,4 +67,12 @@ public interface UserRepository extends JpaRepository<User, String> {
 
     // 统计某学校指定角色集合的用户数量
     long countBySchoolAndUserTypeIn(String school, List<User.UserType> userTypes);
+
+    @Query("SELECT DISTINCT u.school FROM User u WHERE u.school IS NOT NULL AND u.school != '' ORDER BY u.school")
+    List<String> findDistinctSchools();
+
+    @Query("SELECT u FROM User u WHERE u.school = :school AND u.userType != 'student' AND u.status = 'active' ORDER BY u.userType, u.realName")
+    List<User> findNonStudentUsersBySchool(@Param("school") String school);
+
+    List<User> findByRealNameAndSchool(String realName, String school);
 } 

@@ -31,6 +31,8 @@ dependencies {
     // Apache POI — Excel 读写
     implementation 'org.apache.poi:poi:5.2.5'
     implementation 'org.apache.poi:poi-ooxml:5.2.5'
+    // JPush 推送服务
+    implementation 'cn.jpush.api:jpush-client:3.6.6'
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
     testImplementation 'com.h2database:h2'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'

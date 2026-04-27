@@ -157,7 +157,7 @@ public class User {
     
     // 枚举定义
     public enum UserType {
-        student, teacher, department_admin, school_admin, super_admin
+        student, teacher, department_admin, school_admin, super_admin, counselor
     }
     
     public enum UserStatus {
