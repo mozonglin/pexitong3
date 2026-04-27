@@ -361,11 +361,11 @@ public class PeStatisticsService {
      * 院级管理员访问时只返回本院的数据
      */
     public SunshineRunStatisticsResponse getCollegeSunshineRunStatistics(String adminUserId) {
-        // 验证权限
         User admin = pePermissionService.getUser(adminUserId);
         if (admin.getUserType() != User.UserType.department_admin && 
             admin.getUserType() != User.UserType.school_admin && 
-            admin.getUserType() != User.UserType.super_admin) {
+            admin.getUserType() != User.UserType.super_admin &&
+            admin.getUserType() != User.UserType.counselor) {
             throw new RuntimeException("权限不足，只有院级管理员及以上可以查看院系统计数据");
         }
         
@@ -379,6 +379,18 @@ public class PeStatisticsService {
         if (admin.getUserType() == User.UserType.school_admin || admin.getUserType() == User.UserType.super_admin) {
             targetStudents = peUserRepository.findBySchoolAndRole(school, PeUser.Role.STUDENT);
             response.setScope("全校所有院系");
+        } else if (admin.getUserType() == User.UserType.counselor) {
+            List<String> allowedClasses = pePermissionService.getAllowedClassNames(adminUserId);
+            List<PeUser> collegeStudents = resolveCollegeStudentsForCounselor(admin, school);
+            if (allowedClasses != null && !allowedClasses.isEmpty()) {
+                targetStudents = collegeStudents.stream()
+                    .filter(s -> s.getClassName() != null && allowedClasses.contains(s.getClassName().trim()))
+                    .collect(java.util.stream.Collectors.toList());
+                response.setScope("管辖班级");
+            } else {
+                targetStudents = collegeStudents;
+                response.setScope("未分配班级");
+            }
         } else {
             targetStudents = resolveCollegeStudentsForAdmin(admin, school);
             String collegeLabel = admin.getDepartmentName() != null ? admin.getDepartmentName().trim() : "";
@@ -479,6 +491,28 @@ public class PeStatisticsService {
         }
 
         return Collections.emptyList();
+    }
+
+    private List<PeUser> resolveCollegeStudentsForCounselor(User admin, String school) {
+        String dept = admin.getDepartmentName();
+        if (dept == null || dept.isBlank()) {
+            dept = pePermissionService.getCounselorDepartment(admin.getId());
+        }
+        if (dept == null || dept.isBlank()) {
+            return Collections.emptyList();
+        }
+        final String deptTrimmed = dept.trim();
+        List<PeUser> schoolStudents = peUserRepository.findBySchoolAndRole(school, PeUser.Role.STUDENT);
+        List<PeUser> match = schoolStudents.stream()
+            .filter(u -> u.getCollege() != null && !u.getCollege().isBlank())
+            .filter(u -> deptTrimmed.equalsIgnoreCase(u.getCollege().trim()))
+            .collect(Collectors.toList());
+        if (!match.isEmpty()) return match;
+        final String deptKey = normalizeCollegeKey(deptTrimmed);
+        return schoolStudents.stream()
+            .filter(u -> u.getCollege() != null && !u.getCollege().isBlank())
+            .filter(u -> normalizeCollegeKey(u.getCollege()).equals(deptKey))
+            .collect(Collectors.toList());
     }
 
     private static String normalizeCollegeKey(String name) {

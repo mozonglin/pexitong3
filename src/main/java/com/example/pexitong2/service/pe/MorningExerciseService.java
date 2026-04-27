@@ -346,6 +346,8 @@ public class MorningExerciseService {
         Map<String, CollegeAccumulator> collegeAcc = new HashMap<>();
         Map<String, ClassAccumulator> classAcc = new HashMap<>();
 
+        Map<String, List<String>> counselorClassCache = new HashMap<>();
+
         for (MorningExercise me : exercises) {
             User creator = creators.get(me.getCreatedBy());
             if (creator == null || creator.getSchool() == null || creator.getSchool().isBlank()) {
@@ -362,6 +364,20 @@ public class MorningExerciseService {
             List<PeUser> roster = filterStudentsByCreatorDept(schoolStudents, collegeDisplay);
             if (roster.isEmpty()) {
                 continue;
+            }
+
+            if (creator.getUserType() == User.UserType.counselor) {
+                List<String> cClasses = counselorClassCache.computeIfAbsent(
+                    creator.getId(), id -> {
+                        List<String> c = permissionService.getAllowedClassNames(id);
+                        return c != null ? c : List.of();
+                    });
+                if (!cClasses.isEmpty()) {
+                    roster = roster.stream()
+                        .filter(s -> s.getClassName() != null && cClasses.contains(s.getClassName().trim()))
+                        .collect(Collectors.toList());
+                    if (roster.isEmpty()) continue;
+                }
             }
 
             List<MorningExerciseAttendance> atts = attendanceRepository.findByExerciseId(me.getId());
@@ -426,8 +442,13 @@ public class MorningExerciseService {
             response.setColleges(List.of());
         }
 
+        List<String> allowedClasses = permissionService.getAllowedClassNames(currentUserId);
+
         List<MorningExerciseAttendanceDashboardResponse.ClassStatRow> classRows = new ArrayList<>();
         for (ClassAccumulator cla : classAcc.values()) {
+            if (allowedClasses != null && !allowedClasses.contains(cla.className)) {
+                continue;
+            }
             MorningExerciseAttendanceDashboardResponse.ClassStatRow row =
                 new MorningExerciseAttendanceDashboardResponse.ClassStatRow();
             row.setSchoolName(cla.schoolName);

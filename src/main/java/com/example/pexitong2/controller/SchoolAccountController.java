@@ -328,8 +328,8 @@ public class SchoolAccountController {
     private User.UserType parseTeacherAdminRole(String userTypeStr) {
         try {
             User.UserType t = User.UserType.valueOf(userTypeStr.trim());
-            if (t != User.UserType.teacher && t != User.UserType.department_admin && t != User.UserType.school_admin) {
-                throw new IllegalArgumentException("userType 仅支持 teacher、department_admin、school_admin");
+            if (t != User.UserType.teacher && t != User.UserType.counselor && t != User.UserType.department_admin && t != User.UserType.school_admin) {
+                throw new IllegalArgumentException("userType 仅支持 teacher、counselor、department_admin、school_admin");
             }
             return t;
         } catch (IllegalArgumentException e) {

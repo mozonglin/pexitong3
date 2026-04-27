@@ -11,5 +11,7 @@ public interface PeScheduleRepository extends JpaRepository<PeSchedule, String> 
 
     List<PeSchedule> findBySchoolAndSemester(String school, String semester);
 
+    List<PeSchedule> findBySchool(String school);
+
     void deleteBySchoolAndSemester(String school, String semester);
 }

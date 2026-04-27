@@ -136,9 +136,28 @@ public class HomeworkAssignmentController {
 
     @GetMapping("/completion-dashboard")
     public ResponseEntity<ApiResponse<List<Map<String, Object>>>> getCompletionDashboard(
-            @RequestParam String school) {
+            @RequestParam String school,
+            @RequestHeader(value = "Authorization", required = false) String authHeader) {
         try {
+            List<String> counselorClasses = null;
+            if (authHeader != null && authHeader.startsWith("Bearer ")) {
+                String token = authHeader.substring(7);
+                String userType = jwtUtil.extractUserType(token);
+                if ("counselor".equals(userType)) {
+                    String userId = jwtUtil.extractUserId(token);
+                    counselorClasses = homeworkAssignmentService.getCounselorClassNames(userId);
+                }
+            }
             List<Map<String, Object>> dashboard = homeworkAssignmentService.getCompletionDashboard(school);
+            if (counselorClasses != null && !counselorClasses.isEmpty()) {
+                final List<String> allowed = counselorClasses;
+                dashboard = dashboard.stream()
+                    .filter(row -> {
+                        Object cn = row.get("class_name");
+                        return cn != null && allowed.contains(cn.toString());
+                    })
+                    .collect(java.util.stream.Collectors.toList());
+            }
             return ResponseEntity.ok(ApiResponse.success("获取完成情况统计成功", dashboard));
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(ApiResponse.error(400, e.getMessage()));

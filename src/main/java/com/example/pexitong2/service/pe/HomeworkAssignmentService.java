@@ -89,6 +89,16 @@ public class HomeworkAssignmentService {
         return jdbcTemplate.queryForList(sql, assignmentId);
     }
 
+    public List<String> getCounselorClassNames(String userId) {
+        List<Map<String, Object>> rows = jdbcTemplate.queryForList(
+            "SELECT class_name FROM counselor_class_assignments WHERE counselor_id = ?", userId);
+        List<String> result = new ArrayList<>();
+        for (Map<String, Object> r : rows) {
+            result.add((String) r.get("class_name"));
+        }
+        return result;
+    }
+
     public List<Map<String, Object>> getCompletionDashboard(String school) {
         String sql = "SELECT tc.class_name, u.real_name AS teacher_name, " +
                 "COUNT(DISTINCT tce.student_id) AS total_students, " +

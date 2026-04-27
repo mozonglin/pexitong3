@@ -81,6 +81,15 @@ public class PeUserService {
         info.put("userType", user.getUserType().name());
         info.put("school", user.getSchool());
         info.put("departmentName", user.getDepartmentName());
+
+        if (user.getUserType() == User.UserType.counselor) {
+            List<String> assignedClasses = permissionService.getAllowedClassNames(currentUserId);
+            info.put("assignedClasses", assignedClasses != null ? assignedClasses : List.of());
+            if (info.get("departmentName") == null || ((String) info.getOrDefault("departmentName", "")).isBlank()) {
+                String dept = permissionService.getCounselorDepartment(currentUserId);
+                if (dept != null) info.put("departmentName", dept);
+            }
+        }
         return info;
     }
 
@@ -144,14 +153,27 @@ public class PeUserService {
         
         String allowedSchool = permissionService.getAllowedSchool(currentUserId);
         String allowedCollege = permissionService.getAllowedCollege(currentUserId);
+        List<String> allowedClasses = permissionService.getAllowedClassNames(currentUserId);
+
         String targetSchool = allowedSchool != null ? allowedSchool : school;
-        String targetCollege = allowedCollege != null ? allowedCollege : college;
+        String targetCollege;
+        if (allowedClasses != null && !allowedClasses.isEmpty()) {
+            String dept = allowedCollege;
+            if (dept == null || dept.isBlank()) {
+                dept = permissionService.getCounselorDepartment(currentUserId);
+            }
+            targetCollege = dept != null ? dept : college;
+        } else {
+            targetCollege = allowedCollege != null ? allowedCollege : college;
+        }
         
         List<Object[]> rows = peUserRepository.countGroupByClass(targetSchool, targetCollege);
         List<Map<String, Object>> result = new ArrayList<>();
         for (Object[] row : rows) {
+            String className = row[0] != null ? (String) row[0] : "";
+            if (allowedClasses != null && !allowedClasses.contains(className)) continue;
             Map<String, Object> item = new HashMap<>();
-            item.put("name", row[0] != null ? row[0] : "");
+            item.put("name", className);
             item.put("studentCount", ((Number) row[1]).longValue());
             item.put("checkerCount", ((Number) row[2]).longValue());
             item.put("subCheckerCount", ((Number) row[3]).longValue());

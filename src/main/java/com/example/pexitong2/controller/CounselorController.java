@@ -31,8 +31,8 @@ public class CounselorController {
             String userId = jwtUtil.extractUserId(token);
             String userType = jwtUtil.extractUserType(token);
 
-            if (!"department_admin".equals(userType)) {
-                return ApiResponse.error(403, "权限不足：只有院级管理员可以分配班级");
+            if (!"department_admin".equals(userType) && !"school_admin".equals(userType) && !"super_admin".equals(userType)) {
+                return ApiResponse.error(403, "权限不足：只有院级及以上管理员可以分配班级");
             }
 
             String counselorId = (String) body.get("counselorId");
@@ -85,6 +85,23 @@ public class CounselorController {
             );
 
             return ApiResponse.success("获取成功", classes);
+        } catch (Exception e) {
+            return ApiResponse.error(e.getMessage());
+        }
+    }
+
+    @DeleteMapping("/{counselorId}/classes")
+    public ApiResponse<?> removeAllClasses(
+            @PathVariable String counselorId,
+            @RequestHeader("Authorization") String authHeader) {
+        try {
+            String token = authHeader.substring(7);
+            String userType = jwtUtil.extractUserType(token);
+            if (!"department_admin".equals(userType) && !"school_admin".equals(userType) && !"super_admin".equals(userType)) {
+                return ApiResponse.error(403, "权限不足");
+            }
+            jdbcTemplate.update("DELETE FROM counselor_class_assignments WHERE counselor_id = ?", counselorId);
+            return ApiResponse.success("已清除全部班级分配", null);
         } catch (Exception e) {
             return ApiResponse.error(e.getMessage());
         }

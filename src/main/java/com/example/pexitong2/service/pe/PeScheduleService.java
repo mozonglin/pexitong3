@@ -101,7 +101,10 @@ public class PeScheduleService {
     }
 
     public List<PeSchedule> getSchedules(String school, String semester) {
-        return peScheduleRepository.findBySchoolAndSemester(school, semester);
+        if (semester != null && !semester.isBlank()) {
+            return peScheduleRepository.findBySchoolAndSemester(school, semester);
+        }
+        return peScheduleRepository.findBySchool(school);
     }
 
     @Transactional

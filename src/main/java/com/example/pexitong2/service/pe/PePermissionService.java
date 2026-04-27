@@ -3,7 +3,12 @@ package com.example.pexitong2.service.pe;
 import com.example.pexitong2.entity.User;
 import com.example.pexitong2.repository.UserRepository;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
+
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 /**
  * PE管理权限控制服务
@@ -13,7 +18,10 @@ import org.springframework.stereotype.Service;
 public class PePermissionService {
     
     @Autowired
-    private UserRepository userRepository; // 使用原有用户系统的用户表
+    private UserRepository userRepository;
+
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
     
     /**
      * 验证用户是否有PE管理权限
@@ -70,10 +78,15 @@ public class PePermissionService {
         
         if (user.getUserType() == User.UserType.super_admin || 
             user.getUserType() == User.UserType.school_admin) {
-            return null; // 超级管理员和校级管理员可以管理该校所有学院
-        } else if (user.getUserType() == User.UserType.department_admin ||
-                   user.getUserType() == User.UserType.counselor) {
-            return user.getDepartmentName(); // 院级管理员和辅导员只能管理本学院
+            return null;
+        } else if (user.getUserType() == User.UserType.department_admin) {
+            return user.getDepartmentName();
+        } else if (user.getUserType() == User.UserType.counselor) {
+            String dept = user.getDepartmentName();
+            if (dept == null || dept.isBlank()) {
+                dept = getCounselorDepartment(userId);
+            }
+            return dept;
         }
         
         throw new RuntimeException("权限不足");
@@ -109,6 +122,45 @@ public class PePermissionService {
         return allowedCollege.equals(targetCollege);
     }
     
+    /**
+     * 获取辅导员管辖的班级名称列表。
+     * 非辅导员角色返回 null，表示不做班级级别过滤。
+     */
+    public List<String> getAllowedClassNames(String userId) {
+        User user = userRepository.findById(userId)
+            .orElseThrow(() -> new RuntimeException("用户不存在"));
+
+        if (user.getUserType() != User.UserType.counselor) {
+            return null;
+        }
+
+        List<Map<String, Object>> rows = jdbcTemplate.queryForList(
+            "SELECT class_name FROM counselor_class_assignments WHERE counselor_id = ?",
+            userId
+        );
+
+        return rows.stream()
+            .map(r -> (String) r.get("class_name"))
+            .collect(Collectors.toList());
+    }
+
+    /**
+     * 从 counselor_class_assignments 反查辅导员所属学院。
+     * 用于 department_name 缺失时的降级查找。
+     */
+    public String getCounselorDepartment(String userId) {
+        try {
+            List<Map<String, Object>> rows = jdbcTemplate.queryForList(
+                "SELECT DISTINCT department_name FROM counselor_class_assignments WHERE counselor_id = ? AND department_name IS NOT NULL LIMIT 1",
+                userId
+            );
+            if (!rows.isEmpty()) {
+                return (String) rows.get(0).get("department_name");
+            }
+        } catch (Exception ignored) {}
+        return null;
+    }
+
     /**
      * 获取用户信息（供权限控制使用）
      */

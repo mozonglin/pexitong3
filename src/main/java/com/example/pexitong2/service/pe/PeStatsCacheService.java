@@ -33,13 +33,30 @@ public class PeStatsCacheService {
         String dept     = (String) admin.get("department_name");
 
         boolean isSchoolLevel = "school_admin".equals(userType) || "super_admin".equals(userType);
+        boolean isCounselor = "counselor".equals(userType);
         boolean isCollegeView = "college".equals(viewMode);
 
         if ("school".equals(viewMode) && !isSchoolLevel) {
             throw new RuntimeException("权限不足，只有校级管理员可以查看统计数据");
         }
-        if (isCollegeView && !isSchoolLevel && !"department_admin".equals(userType)) {
+        if (isCollegeView && !isSchoolLevel && !"department_admin".equals(userType) && !isCounselor) {
             throw new RuntimeException("权限不足");
+        }
+
+        List<String> counselorClasses = null;
+        if (isCounselor) {
+            List<Map<String, Object>> classRows = jdbcTemplate.queryForList(
+                "SELECT class_name FROM counselor_class_assignments WHERE counselor_id = ?", adminUserId);
+            counselorClasses = new ArrayList<>();
+            for (Map<String, Object> r : classRows) {
+                counselorClasses.add((String) r.get("class_name"));
+            }
+            if (dept == null || dept.isBlank()) {
+                List<Map<String, Object>> deptRows = jdbcTemplate.queryForList(
+                    "SELECT DISTINCT department_name FROM counselor_class_assignments WHERE counselor_id = ? AND department_name IS NOT NULL LIMIT 1",
+                    adminUserId);
+                if (!deptRows.isEmpty()) dept = (String) deptRows.get(0).get("department_name");
+            }
         }
 
         String dateFilter = getDateCondition("r.created_at", period);
@@ -51,6 +68,11 @@ public class PeStatsCacheService {
         if (isCollegeView && !isSchoolLevel) {
             scopeFilter += " AND u.college = ?";
             sqlParams.add(dept);
+        }
+        if (isCounselor && counselorClasses != null && !counselorClasses.isEmpty()) {
+            String placeholders = String.join(",", Collections.nCopies(counselorClasses.size(), "?"));
+            scopeFilter += " AND u.class_name IN (" + placeholders + ")";
+            sqlParams.addAll(counselorClasses);
         }
         Object[] params = sqlParams.toArray();
 

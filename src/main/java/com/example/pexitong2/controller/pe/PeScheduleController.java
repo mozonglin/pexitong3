@@ -53,10 +53,19 @@ public class PeScheduleController {
 
     @GetMapping("")
     public ResponseEntity<ApiResponse<List<PeSchedule>>> getSchedules(
-            @RequestParam String school,
-            @RequestParam String semester) {
+            @RequestHeader("Authorization") String authHeader,
+            @RequestParam(required = false) String school,
+            @RequestParam(required = false) String semester) {
         try {
-            List<PeSchedule> schedules = peScheduleService.getSchedules(school, semester);
+            String resolvedSchool = school;
+            if (resolvedSchool == null || resolvedSchool.isBlank()) {
+                String token = authHeader.startsWith("Bearer ") ? authHeader.substring(7) : authHeader;
+                String userId = jwtUtil.extractUserId(token);
+                User user = userRepository.findById(userId)
+                        .orElseThrow(() -> new RuntimeException("用户不存在"));
+                resolvedSchool = user.getSchool();
+            }
+            List<PeSchedule> schedules = peScheduleService.getSchedules(resolvedSchool, semester);
             return ResponseEntity.ok(ApiResponse.success("获取课表成功", schedules));
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(ApiResponse.error(400, e.getMessage()));

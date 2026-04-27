@@ -59,14 +59,14 @@ public class HomeworkStatisticsController {
 
             boolean allowed = userType.equals("department_admin")
                     || userType.equals("school_admin")
-                    || userType.equals("super_admin");
+                    || userType.equals("super_admin")
+                    || userType.equals("counselor");
             if (!allowed) throw new SecurityException("权限不足");
 
             if (userType.equals("super_admin")) {
-                return new AdminContext(userType, null, null);
+                return new AdminContext(userType, null, null, null);
             }
 
-            // 从 users 表查管理员的学校和院系
             String userId = jwtUtil.extractUserId(token);
             List<Map<String, Object>> rows = jdbcTemplate.queryForList(
                     "SELECT school, department_name FROM users WHERE id = ? LIMIT 1", userId);
@@ -78,7 +78,22 @@ public class HomeworkStatisticsController {
             if (school == null || school.isBlank()) {
                 throw new SecurityException("管理员账号未绑定学校信息");
             }
-            return new AdminContext(userType, school, department);
+
+            List<String> counselorClasses = null;
+            if ("counselor".equals(userType)) {
+                if (department == null || department.isBlank()) {
+                    List<Map<String, Object>> deptRows = jdbcTemplate.queryForList(
+                        "SELECT DISTINCT department_name FROM counselor_class_assignments WHERE counselor_id = ? AND department_name IS NOT NULL LIMIT 1", userId);
+                    if (!deptRows.isEmpty()) department = (String) deptRows.get(0).get("department_name");
+                }
+                List<Map<String, Object>> classRows = jdbcTemplate.queryForList(
+                    "SELECT class_name FROM counselor_class_assignments WHERE counselor_id = ?", userId);
+                counselorClasses = new ArrayList<>();
+                for (Map<String, Object> r : classRows) {
+                    counselorClasses.add((String) r.get("class_name"));
+                }
+            }
+            return new AdminContext(userType, school, department, counselorClasses);
         } catch (SecurityException e) {
             throw e;
         } catch (Exception e) {
@@ -86,19 +101,21 @@ public class HomeworkStatisticsController {
         }
     }
 
-    /** 管理员上下文 */
     private static class AdminContext {
         final String userType;
-        final String school;     // null → super_admin，不限学校
-        final String department; // department_admin 的院系名（对应 users1.college）
+        final String school;
+        final String department;
+        final List<String> counselorClasses;
 
-        AdminContext(String userType, String school, String department) {
-            this.userType   = userType;
-            this.school     = school;
-            this.department = department;
+        AdminContext(String userType, String school, String department, List<String> counselorClasses) {
+            this.userType         = userType;
+            this.school           = school;
+            this.department       = department;
+            this.counselorClasses = counselorClasses;
         }
 
         boolean isDeptAdmin()   { return "department_admin".equals(userType); }
+        boolean isCounselor()   { return "counselor".equals(userType); }
         boolean isSuperAdmin()  { return "super_admin".equals(userType); }
     }
 
@@ -110,12 +127,18 @@ public class HomeworkStatisticsController {
         if (ctx.isSuperAdmin()) {
             return new Object[]{"1=1", new Object[0]};
         }
-        // department_admin：限制到本校本院（users1.college 对应 users.department_name）
-        if (ctx.isDeptAdmin() && ctx.department != null && !ctx.department.isBlank()) {
+        if (ctx.isCounselor() && ctx.counselorClasses != null && !ctx.counselorClasses.isEmpty()) {
+            String placeholders = String.join(",", Collections.nCopies(ctx.counselorClasses.size(), "?"));
+            List<Object> params = new ArrayList<>();
+            params.add(ctx.school);
+            params.addAll(ctx.counselorClasses);
+            return new Object[]{"u.school = ? AND u.class_name IN (" + placeholders + ")",
+                    params.toArray()};
+        }
+        if ((ctx.isDeptAdmin() || ctx.isCounselor()) && ctx.department != null && !ctx.department.isBlank()) {
             return new Object[]{"u.school = ? AND u.college = ?",
                     new Object[]{ctx.school, ctx.department}};
         }
-        // school_admin：只限本校
         return new Object[]{"u.school = ?", new Object[]{ctx.school}};
     }
 
@@ -314,7 +337,7 @@ public class HomeworkStatisticsController {
         } catch (SecurityException e) {
             return ResponseEntity.status(403).body(ApiResponse.error(e.getMessage()));
         }
-        if (ctx.isDeptAdmin()) {
+        if (ctx.isDeptAdmin() || ctx.isCounselor()) {
             return ResponseEntity.status(403).body(ApiResponse.error("权限不足，仅校级管理员可查看院系排名"));
         }
         try {
