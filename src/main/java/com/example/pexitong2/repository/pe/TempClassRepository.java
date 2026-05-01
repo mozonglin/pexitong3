@@ -12,4 +12,6 @@ public interface TempClassRepository extends JpaRepository<TempClass, String> {
     List<TempClass> findBySchoolAndSemester(String school, String semester);
 
     List<TempClass> findByTeacherId(String teacherId);
+
+    boolean existsBySchoolAndSemesterAndTeacherIdAndClassName(String school, String semester, String teacherId, String className);
 }

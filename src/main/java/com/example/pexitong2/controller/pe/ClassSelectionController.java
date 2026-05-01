@@ -1,6 +1,8 @@
 package com.example.pexitong2.controller.pe;
 
 import com.example.pexitong2.dto.ApiResponse;
+import com.example.pexitong2.entity.User;
+import com.example.pexitong2.repository.UserRepository;
 import com.example.pexitong2.util.JwtUtil;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
@@ -21,6 +23,9 @@ public class ClassSelectionController {
     @Autowired
     private JwtUtil jwtUtil;
 
+    @Autowired
+    private UserRepository userRepository;
+
     @PostMapping("/window")
     public ResponseEntity<ApiResponse<Map<String, Object>>> createWindow(
             @RequestHeader("Authorization") String authHeader,
@@ -34,11 +39,16 @@ public class ClassSelectionController {
             }
 
             String userId = jwtUtil.extractUserId(token);
+            User user = userRepository.findById(userId)
+                    .orElseThrow(() -> new RuntimeException("用户不存在"));
             String id = UUID.randomUUID().toString();
-            String school = (String) request.get("school");
+            String school = request.get("school") != null ? String.valueOf(request.get("school")) : null;
+            if (school == null || school.isBlank()) {
+                school = user.getSchool();
+            }
             String semester = (String) request.get("semester");
-            String openTime = (String) request.get("openTime");
-            String closeTime = (String) request.get("closeTime");
+            String openTime = request.get("openTime") != null ? String.valueOf(request.get("openTime")) : (String) request.get("startTime");
+            String closeTime = request.get("closeTime") != null ? String.valueOf(request.get("closeTime")) : (String) request.get("endTime");
             Boolean isActive = request.get("isActive") != null ? (Boolean) request.get("isActive") : true;
 
             jdbcTemplate.update(
@@ -46,7 +56,8 @@ public class ClassSelectionController {
                     id, school, semester, openTime, closeTime, isActive, userId);
 
             List<Map<String, Object>> result = jdbcTemplate.queryForList(
-                    "SELECT * FROM class_selection_windows WHERE id = ?", id);
+                    "SELECT id, school, semester, open_time AS startTime, close_time AS endTime, is_active AS isActive, created_by AS createdBy, created_at AS createdAt FROM class_selection_windows WHERE id = ?",
+                    id);
 
             return ResponseEntity.ok(ApiResponse.success("创建选课窗口成功", result.isEmpty() ? null : result.get(0)));
         } catch (Exception e) {
@@ -56,12 +67,28 @@ public class ClassSelectionController {
 
     @GetMapping("/window")
     public ResponseEntity<ApiResponse<Map<String, Object>>> getWindow(
-            @RequestParam String school,
-            @RequestParam String semester) {
+            @RequestHeader("Authorization") String authHeader,
+            @RequestParam(required = false) String school,
+            @RequestParam(required = false) String semester) {
         try {
-            List<Map<String, Object>> results = jdbcTemplate.queryForList(
-                    "SELECT * FROM class_selection_windows WHERE school = ? AND semester = ? ORDER BY created_at DESC LIMIT 1",
-                    school, semester);
+            String token = authHeader.startsWith("Bearer ") ? authHeader.substring(7) : authHeader;
+            String userId = jwtUtil.extractUserId(token);
+            User user = userRepository.findById(userId)
+                    .orElseThrow(() -> new RuntimeException("用户不存在"));
+            String resolvedSchool = (school != null && !school.isBlank()) ? school : user.getSchool();
+
+            List<Map<String, Object>> results;
+            if (semester != null && !semester.isBlank()) {
+                results = jdbcTemplate.queryForList(
+                        "SELECT id, school, semester, open_time AS startTime, close_time AS endTime, is_active AS isActive, created_by AS createdBy, created_at AS createdAt " +
+                                "FROM class_selection_windows WHERE school = ? AND semester = ? ORDER BY created_at DESC LIMIT 1",
+                        resolvedSchool, semester);
+            } else {
+                results = jdbcTemplate.queryForList(
+                        "SELECT id, school, semester, open_time AS startTime, close_time AS endTime, is_active AS isActive, created_by AS createdBy, created_at AS createdAt " +
+                                "FROM class_selection_windows WHERE school = ? ORDER BY created_at DESC LIMIT 1",
+                        resolvedSchool);
+            }
 
             if (results.isEmpty()) {
                 return ResponseEntity.ok(ApiResponse.success("暂无选课窗口", null));
@@ -91,10 +118,16 @@ public class ClassSelectionController {
             if (request.containsKey("openTime")) {
                 sql.append("open_time = ?, ");
                 params.add(request.get("openTime"));
+            } else if (request.containsKey("startTime")) {
+                sql.append("open_time = ?, ");
+                params.add(request.get("startTime"));
             }
             if (request.containsKey("closeTime")) {
                 sql.append("close_time = ?, ");
                 params.add(request.get("closeTime"));
+            } else if (request.containsKey("endTime")) {
+                sql.append("close_time = ?, ");
+                params.add(request.get("endTime"));
             }
             if (request.containsKey("isActive")) {
                 sql.append("is_active = ?, ");
@@ -112,7 +145,8 @@ public class ClassSelectionController {
             jdbcTemplate.update(sql.toString(), params.toArray());
 
             List<Map<String, Object>> result = jdbcTemplate.queryForList(
-                    "SELECT * FROM class_selection_windows WHERE id = ?", id);
+                    "SELECT id, school, semester, open_time AS startTime, close_time AS endTime, is_active AS isActive, created_by AS createdBy, created_at AS createdAt FROM class_selection_windows WHERE id = ?",
+                    id);
 
             return ResponseEntity.ok(ApiResponse.success("更新选课窗口成功", result.isEmpty() ? null : result.get(0)));
         } catch (Exception e) {

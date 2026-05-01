@@ -74,18 +74,45 @@ public class HomeworkAssignmentService {
         return homeworkAssignmentRepository.findByTeacherId(teacherId);
     }
 
+    public List<Map<String, Object>> getAssignmentRowsByTeacher(String teacherId) {
+        String sql = "SELECT ha.id, ha.teacher_id AS teacherId, ha.temp_class_id AS tempClassId, " +
+                "ha.school, ha.title, ha.exercise_type AS exerciseType, ha.required_count AS requiredCount, " +
+                "ha.start_time AS startTime, ha.deadline, ha.status, " +
+                "tc.class_name AS tempClassName " +
+                "FROM homework_assignments ha " +
+                "LEFT JOIN temp_classes tc ON ha.temp_class_id = tc.id " +
+                "WHERE ha.teacher_id = ? " +
+                "ORDER BY ha.created_at DESC";
+        return jdbcTemplate.queryForList(sql, teacherId);
+    }
+
     public List<HomeworkAssignment> getAssignmentsBySchool(String school) {
         return homeworkAssignmentRepository.findBySchool(school);
     }
 
+    public List<Map<String, Object>> getAssignmentRowsBySchool(String school) {
+        String sql = "SELECT ha.id, ha.teacher_id AS teacherId, ha.temp_class_id AS tempClassId, " +
+                "ha.school, ha.title, ha.exercise_type AS exerciseType, ha.required_count AS requiredCount, " +
+                "ha.start_time AS startTime, ha.deadline, ha.status, " +
+                "tc.class_name AS tempClassName " +
+                "FROM homework_assignments ha " +
+                "LEFT JOIN temp_classes tc ON ha.temp_class_id = tc.id " +
+                "WHERE ha.school = ? " +
+                "ORDER BY ha.created_at DESC";
+        return jdbcTemplate.queryForList(sql, school);
+    }
+
     public List<Map<String, Object>> getAssignmentCompletions(String assignmentId) {
-        String sql = "SELECT hs.id AS submission_id, hs.student_id, u.real_name AS student_name, " +
-                "hs.completed_count, ha.required_count, hs.status, hs.submitted_at " +
+        String sql = "SELECT hs.id AS submissionId, hs.student_id AS studentId, u.name AS studentName, " +
+                "u.student_id AS studentNumber, hs.completed_count AS completedCount, " +
+                "ha.required_count AS requiredCount, hs.status, " +
+                "CASE WHEN hs.status IN ('submitted','approved') THEN TRUE ELSE FALSE END AS completed, " +
+                "hs.submitted_at AS submittedAt " +
                 "FROM homework_submissions hs " +
-                "LEFT JOIN users1 u ON hs.student_id = u.id " +
+                "LEFT JOIN users1 u ON hs.student_id = u.student_id " +
                 "LEFT JOIN homework_assignments ha ON hs.assignment_id = ha.id " +
                 "WHERE hs.assignment_id = ? " +
-                "ORDER BY u.real_name";
+                "ORDER BY u.name";
         return jdbcTemplate.queryForList(sql, assignmentId);
     }
 
@@ -100,17 +127,17 @@ public class HomeworkAssignmentService {
     }
 
     public List<Map<String, Object>> getCompletionDashboard(String school) {
-        String sql = "SELECT tc.class_name, u.real_name AS teacher_name, " +
-                "COUNT(DISTINCT tce.student_id) AS total_students, " +
-                "COUNT(DISTINCT CASE WHEN hs.status IN ('submitted','approved') THEN hs.student_id END) AS submitted_count, " +
+        String sql = "SELECT tc.class_name AS tempClassName, u.real_name AS teacherName, " +
+                "COUNT(DISTINCT tce.student_id) AS totalStudents, " +
+                "COUNT(DISTINCT CASE WHEN hs.status IN ('submitted','approved') THEN hs.student_id END) AS submittedCount, " +
                 "ROUND(" +
                 "  CASE WHEN COUNT(DISTINCT tce.student_id) = 0 THEN 0 " +
                 "  ELSE COUNT(DISTINCT CASE WHEN hs.status IN ('submitted','approved') THEN hs.student_id END) * 100.0 " +
                 "       / COUNT(DISTINCT tce.student_id) END, 2" +
-                ") AS completion_rate " +
+                ") AS completionRate " +
                 "FROM homework_assignments ha " +
                 "JOIN temp_classes tc ON ha.temp_class_id = tc.id " +
-                "LEFT JOIN users1 u ON ha.teacher_id = u.id " +
+                "LEFT JOIN users u ON ha.teacher_id = u.id " +
                 "LEFT JOIN temp_class_enrollments tce ON tc.id = tce.temp_class_id " +
                 "LEFT JOIN homework_submissions hs ON ha.id = hs.assignment_id AND hs.student_id = tce.student_id " +
                 "WHERE ha.school = ? AND ha.status = 'active' " +

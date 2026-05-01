@@ -1,7 +1,9 @@
 package com.example.pexitong2.controller.pe;
 
 import com.example.pexitong2.dto.ApiResponse;
+import com.example.pexitong2.entity.User;
 import com.example.pexitong2.entity.pe.HomeworkAssignment;
+import com.example.pexitong2.repository.UserRepository;
 import com.example.pexitong2.service.pe.HomeworkAssignmentService;
 import com.example.pexitong2.util.JwtUtil;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -23,6 +25,9 @@ public class HomeworkAssignmentController {
     @Autowired
     private JwtUtil jwtUtil;
 
+    @Autowired
+    private UserRepository userRepository;
+
     @PostMapping("")
     public ResponseEntity<ApiResponse<HomeworkAssignment>> createAssignment(
             @RequestBody Map<String, Object> body,
@@ -40,6 +45,12 @@ public class HomeworkAssignmentController {
             String teacherId = (String) body.getOrDefault("teacherId", userId);
             String tempClassId = (String) body.get("tempClassId");
             String school = (String) body.get("school");
+            if (school == null || school.isBlank()) {
+                User user = userRepository.findById(userId).orElse(null);
+                if (user != null) {
+                    school = user.getSchool();
+                }
+            }
             String title = (String) body.get("title");
             String exerciseType = (String) body.get("exerciseType");
             Integer requiredCount = body.get("requiredCount") != null
@@ -58,7 +69,7 @@ public class HomeworkAssignmentController {
     }
 
     @GetMapping("")
-    public ResponseEntity<ApiResponse<List<HomeworkAssignment>>> listAssignments(
+    public ResponseEntity<ApiResponse<List<Map<String, Object>>>> listAssignments(
             @RequestParam(required = false) String teacherId,
             @RequestParam(required = false) String school,
             @RequestHeader("Authorization") String authHeader) {
@@ -67,14 +78,14 @@ public class HomeworkAssignmentController {
             String userType = jwtUtil.extractUserType(token);
             String userId = jwtUtil.extractUserId(token);
 
-            List<HomeworkAssignment> assignments;
+            List<Map<String, Object>> assignments;
             if ("teacher".equals(userType)) {
-                assignments = homeworkAssignmentService.getAssignmentsByTeacher(
+                assignments = homeworkAssignmentService.getAssignmentRowsByTeacher(
                         teacherId != null ? teacherId : userId);
             } else if (school != null) {
-                assignments = homeworkAssignmentService.getAssignmentsBySchool(school);
+                assignments = homeworkAssignmentService.getAssignmentRowsBySchool(school);
             } else {
-                assignments = homeworkAssignmentService.getAssignmentsByTeacher(userId);
+                assignments = homeworkAssignmentService.getAssignmentRowsByTeacher(userId);
             }
             return ResponseEntity.ok(ApiResponse.success("获取作业列表成功", assignments));
         } catch (Exception e) {
