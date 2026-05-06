@@ -77,7 +77,7 @@ public class CheckUserImportController {
     public ResponseEntity<ApiResponse<List<String>>> getTeacherSchools() {
         try {
             List<Map<String, Object>> rows = jdbcTemplate.queryForList(
-                "SELECT DISTINCT school FROM checkuser.checkteacher WHERE school IS NOT NULL ORDER BY school");
+                "SELECT DISTINCT school FROM checkuser1.checkteacher WHERE school IS NOT NULL ORDER BY school");
             List<String> schools = new ArrayList<>();
             for (Map<String, Object> row : rows) {
                 String school = (String) row.get("school");
@@ -110,14 +110,14 @@ public class CheckUserImportController {
 
             if (isSchoolAdmin && adminSchool != null && !adminSchool.isBlank()) {
                 studentRows = jdbcTemplate.queryForList(
-                    "SELECT school, COUNT(*) AS cnt FROM checkuser.checkstudent WHERE school = ? GROUP BY school", adminSchool);
+                    "SELECT school, COUNT(*) AS cnt FROM checkuser1.checkstudent WHERE school = ? GROUP BY school", adminSchool);
                 teacherRows = jdbcTemplate.queryForList(
-                    "SELECT school, COUNT(*) AS cnt FROM checkuser.checkteacher WHERE school = ? GROUP BY school", adminSchool);
+                    "SELECT school, COUNT(*) AS cnt FROM checkuser1.checkteacher WHERE school = ? GROUP BY school", adminSchool);
             } else {
                 studentRows = jdbcTemplate.queryForList(
-                    "SELECT school, COUNT(*) AS cnt FROM checkuser.checkstudent GROUP BY school ORDER BY school");
+                    "SELECT school, COUNT(*) AS cnt FROM checkuser1.checkstudent GROUP BY school ORDER BY school");
                 teacherRows = jdbcTemplate.queryForList(
-                    "SELECT school, COUNT(*) AS cnt FROM checkuser.checkteacher GROUP BY school ORDER BY school");
+                    "SELECT school, COUNT(*) AS cnt FROM checkuser1.checkteacher GROUP BY school ORDER BY school");
             }
 
             Map<String, Long> studentMap = new LinkedHashMap<>();
@@ -157,13 +157,13 @@ public class CheckUserImportController {
 
     // ── 下载模板 ──────────────────────────────────────────────────────────────
 
-    /** 学生导入模板：school / college / class_name / studentid / name */
+    /** 学生导入模板：school / college / class_name / studentid / name / gender */
     @GetMapping("/template/student")
     public ResponseEntity<byte[]> downloadStudentTemplate(HttpServletRequest request) {
         try {
             requireSchoolAdminOrAbove(request);
-            String[] headers = {"学校", "学院", "班级", "学号", "姓名"};
-            String[] example = {"济南校区", "电气学院", "电气工程及其自动化2021-1", "202100000001", "张三"};
+            String[] headers = {"学校", "学院", "班级", "学号", "姓名", "性别"};
+            String[] example = {"济南校区", "电气学院", "电气工程及其自动化2021-1", "202100000001", "张三", "男"};
             byte[] bytes = buildTemplate("学生导入模板", headers, example);
             return buildDownloadResponse(bytes, "学生导入模板.xlsx");
         } catch (SecurityException e) {
@@ -211,7 +211,7 @@ public class CheckUserImportController {
             boolean isSchoolAdmin = admin.getUserType() == User.UserType.school_admin;
             String adminSchool = admin.getSchool();
 
-            List<Map<String, String>> rows = parseExcel(file, 5);
+            List<Map<String, String>> rows = parseExcel(file, 6);
             List<String> errors = new ArrayList<>();
 
             if ("preview".equals(mode)) {
@@ -225,6 +225,7 @@ public class CheckUserImportController {
                     String className = row.get("2");
                     String studentId = row.get("3");
                     String name      = row.get("4");
+                    String gender    = row.get("5");
 
                     if (isBlank(studentId) || isBlank(name)) {
                         errors.add("第 " + (i + 2) + " 行：学号或姓名为空，已跳过");
@@ -232,7 +233,7 @@ public class CheckUserImportController {
                     }
 
                     List<Map<String, Object>> existing = jdbcTemplate.queryForList(
-                        "SELECT school, college, class_name, studentid, name FROM checkuser.checkstudent WHERE studentid = ?",
+                        "SELECT school, college, class_name, studentid, name, gender FROM checkuser1.checkstudent WHERE studentid = ?",
                         studentId);
 
                     Map<String, Object> record = new LinkedHashMap<>();
@@ -242,6 +243,7 @@ public class CheckUserImportController {
                     record.put("className", className);
                     record.put("studentId", studentId);
                     record.put("name", name);
+                    record.put("gender", gender);
 
                     if (!existing.isEmpty()) {
                         Map<String, Object> existingRow = existing.get(0);
@@ -249,6 +251,7 @@ public class CheckUserImportController {
                         record.put("existingSchool", existingRow.get("school"));
                         record.put("existingCollege", existingRow.get("college"));
                         record.put("existingClassName", existingRow.get("class_name"));
+                        record.put("existingGender", existingRow.get("gender"));
                         duplicates.add(record);
                     } else {
                         newRecords.add(record);
@@ -279,6 +282,7 @@ public class CheckUserImportController {
                 String className = row.get("2");
                 String studentId = row.get("3");
                 String name      = row.get("4");
+                String gender    = row.get("5");
 
                 if (isBlank(studentId)) {
                     errors.add("第 " + (i + 2) + " 行：学号为空，已跳过");
@@ -290,13 +294,13 @@ public class CheckUserImportController {
                 }
 
                 Integer count = jdbcTemplate.queryForObject(
-                    "SELECT COUNT(*) FROM checkuser.checkstudent WHERE studentid = ?",
+                    "SELECT COUNT(*) FROM checkuser1.checkstudent WHERE studentid = ?",
                     Integer.class, studentId);
                 if (count != null && count > 0) {
                     if (overrideSet.contains(studentId)) {
                         jdbcTemplate.update(
-                            "UPDATE checkuser.checkstudent SET school=?, college=?, class_name=?, name=? WHERE studentid=?",
-                            school, college, className, name, studentId);
+                            "UPDATE checkuser1.checkstudent SET school=?, college=?, class_name=?, name=?, gender=? WHERE studentid=?",
+                            school, college, className, name, gender, studentId);
                         updated++;
                     } else {
                         skipped++;
@@ -305,8 +309,8 @@ public class CheckUserImportController {
                 }
 
                 jdbcTemplate.update(
-                    "INSERT INTO checkuser.checkstudent (school, college, class_name, studentid, name) VALUES (?,?,?,?,?)",
-                    school, college, className, studentId, name);
+                    "INSERT INTO checkuser1.checkstudent (school, college, class_name, studentid, name, gender) VALUES (?,?,?,?,?,?)",
+                    school, college, className, studentId, name, gender);
                 inserted++;
             }
 
@@ -365,7 +369,7 @@ public class CheckUserImportController {
                     }
 
                     List<Map<String, Object>> existing = jdbcTemplate.queryForList(
-                        "SELECT school, college, teacherid, name FROM checkuser.checkteacher WHERE teacherid = ?",
+                        "SELECT school, college, teacherid, name FROM checkuser1.checkteacher WHERE teacherid = ?",
                         teacherId);
 
                     Map<String, Object> record = new LinkedHashMap<>();
@@ -419,12 +423,12 @@ public class CheckUserImportController {
                 }
 
                 Integer count = jdbcTemplate.queryForObject(
-                    "SELECT COUNT(*) FROM checkuser.checkteacher WHERE teacherid = ?",
+                    "SELECT COUNT(*) FROM checkuser1.checkteacher WHERE teacherid = ?",
                     Integer.class, teacherId);
                 if (count != null && count > 0) {
                     if (overrideSet.contains(teacherId)) {
                         jdbcTemplate.update(
-                            "UPDATE checkuser.checkteacher SET school=?, college=?, name=? WHERE teacherid=?",
+                            "UPDATE checkuser1.checkteacher SET school=?, college=?, name=? WHERE teacherid=?",
                             school, college, name, teacherId);
                         updated++;
                     } else {
@@ -434,7 +438,7 @@ public class CheckUserImportController {
                 }
 
                 jdbcTemplate.update(
-                    "INSERT INTO checkuser.checkteacher (school, college, teacherid, name) VALUES (?,?,?,?)",
+                    "INSERT INTO checkuser1.checkteacher (school, college, teacherid, name) VALUES (?,?,?,?)",
                     school, college, teacherId, name);
                 inserted++;
             }

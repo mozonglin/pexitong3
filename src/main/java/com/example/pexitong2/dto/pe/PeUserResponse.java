@@ -15,6 +15,7 @@ public class PeUserResponse {
     private String className;
     private String phoneNumber;
     private String avatar;
+    private String gender;
     private Integer points;
     private Integer peActivityPoints;
     private Integer morningExercisePoints;
@@ -46,6 +47,7 @@ public class PeUserResponse {
         this.className = user.getClassName();
         this.phoneNumber = user.getPhoneNumber();
         this.avatar = user.getAvatar();
+        this.gender = user.getGender();
         this.points = user.getPoints();
         this.peActivityPoints = user.getPeActivityPoints();
         this.morningExercisePoints = user.getMorningExercisePoints();
@@ -85,6 +87,9 @@ public class PeUserResponse {
     
     public String getAvatar() { return avatar; }
     public void setAvatar(String avatar) { this.avatar = avatar; }
+    
+    public String getGender() { return gender; }
+    public void setGender(String gender) { this.gender = gender; }
     
     public Integer getPoints() { return points; }
     public void setPoints(Integer points) { this.points = points; }

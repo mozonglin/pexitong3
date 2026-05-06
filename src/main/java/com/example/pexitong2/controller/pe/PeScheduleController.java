@@ -92,7 +92,7 @@ public class PeScheduleController {
             item.put("name", name);
 
             List<Map<String, Object>> preRows = jdbcTemplate.queryForList(
-                    "SELECT teacherid, college FROM checkuser.checkteacher WHERE school = ? AND name = ? LIMIT 1",
+                    "SELECT teacherid, college FROM checkuser1.checkteacher WHERE school = ? AND name = ? LIMIT 1",
                     school, name);
             if (!preRows.isEmpty()) {
                 item.put("inPreimport", true);

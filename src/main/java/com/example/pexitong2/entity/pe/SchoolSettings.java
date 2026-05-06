@@ -20,6 +20,24 @@ public class SchoolSettings {
     @Column(name = "sunshine_run_distance")
     private Integer sunshineRunDistance = 1600;
 
+    @Column(name = "sunshine_run_distance_male")
+    private Integer sunshineRunDistanceMale;
+
+    @Column(name = "sunshine_run_distance_female")
+    private Integer sunshineRunDistanceFemale;
+
+    @Column(name = "sunshine_run_pace_min_male")
+    private Double sunshineRunPaceMinMale;
+
+    @Column(name = "sunshine_run_pace_max_male")
+    private Double sunshineRunPaceMaxMale;
+
+    @Column(name = "sunshine_run_pace_min_female")
+    private Double sunshineRunPaceMinFemale;
+
+    @Column(name = "sunshine_run_pace_max_female")
+    private Double sunshineRunPaceMaxFemale;
+
     @Column(name = "class_selection_max")
     private Integer classSelectionMax = 1;
 
@@ -41,6 +59,24 @@ public class SchoolSettings {
 
     public Integer getSunshineRunDistance() { return sunshineRunDistance; }
     public void setSunshineRunDistance(Integer sunshineRunDistance) { this.sunshineRunDistance = sunshineRunDistance; }
+
+    public Integer getSunshineRunDistanceMale() { return sunshineRunDistanceMale; }
+    public void setSunshineRunDistanceMale(Integer sunshineRunDistanceMale) { this.sunshineRunDistanceMale = sunshineRunDistanceMale; }
+
+    public Integer getSunshineRunDistanceFemale() { return sunshineRunDistanceFemale; }
+    public void setSunshineRunDistanceFemale(Integer sunshineRunDistanceFemale) { this.sunshineRunDistanceFemale = sunshineRunDistanceFemale; }
+
+    public Double getSunshineRunPaceMinMale() { return sunshineRunPaceMinMale; }
+    public void setSunshineRunPaceMinMale(Double sunshineRunPaceMinMale) { this.sunshineRunPaceMinMale = sunshineRunPaceMinMale; }
+
+    public Double getSunshineRunPaceMaxMale() { return sunshineRunPaceMaxMale; }
+    public void setSunshineRunPaceMaxMale(Double sunshineRunPaceMaxMale) { this.sunshineRunPaceMaxMale = sunshineRunPaceMaxMale; }
+
+    public Double getSunshineRunPaceMinFemale() { return sunshineRunPaceMinFemale; }
+    public void setSunshineRunPaceMinFemale(Double sunshineRunPaceMinFemale) { this.sunshineRunPaceMinFemale = sunshineRunPaceMinFemale; }
+
+    public Double getSunshineRunPaceMaxFemale() { return sunshineRunPaceMaxFemale; }
+    public void setSunshineRunPaceMaxFemale(Double sunshineRunPaceMaxFemale) { this.sunshineRunPaceMaxFemale = sunshineRunPaceMaxFemale; }
 
     public Integer getClassSelectionMax() { return classSelectionMax; }
     public void setClassSelectionMax(Integer classSelectionMax) { this.classSelectionMax = classSelectionMax; }

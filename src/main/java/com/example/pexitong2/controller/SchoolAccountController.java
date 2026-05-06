@@ -80,9 +80,9 @@ public class SchoolAccountController {
             String adminSchool = admin.getSchool();
             List<Map<String, Object>> rows = jdbcTemplate.queryForList(
                 "SELECT school FROM (" +
-                    "SELECT DISTINCT school FROM checkuser.checkstudent WHERE school IS NOT NULL AND TRIM(school) <> '' " +
+                    "SELECT DISTINCT school FROM checkuser1.checkstudent WHERE school IS NOT NULL AND TRIM(school) <> '' " +
                     "UNION " +
-                    "SELECT DISTINCT school FROM checkuser.checkteacher WHERE school IS NOT NULL AND TRIM(school) <> ''" +
+                    "SELECT DISTINCT school FROM checkuser1.checkteacher WHERE school IS NOT NULL AND TRIM(school) <> ''" +
                 ") u ORDER BY school");
             List<Map<String, Object>> result = new ArrayList<>();
             for (Map<String, Object> row : rows) {
@@ -90,9 +90,9 @@ public class SchoolAccountController {
                 if (school == null || school.isBlank()) continue;
                 if (isSchoolAdmin && adminSchool != null && !adminSchool.equals(school)) continue;
                 Long studentCnt = jdbcTemplate.queryForObject(
-                    "SELECT COUNT(*) FROM checkuser.checkstudent WHERE school = ?", Long.class, school);
+                    "SELECT COUNT(*) FROM checkuser1.checkstudent WHERE school = ?", Long.class, school);
                 Long preTeacherCnt = jdbcTemplate.queryForObject(
-                    "SELECT COUNT(*) FROM checkuser.checkteacher WHERE school = ?", Long.class, school);
+                    "SELECT COUNT(*) FROM checkuser1.checkteacher WHERE school = ?", Long.class, school);
                 long regTeacherCnt = userRepository.countBySchoolAndUserTypeIn(school, REGISTERED_TEACHER_ROLES);
                 Map<String, Object> item = new LinkedHashMap<>();
                 item.put("school", school);
@@ -124,9 +124,9 @@ public class SchoolAccountController {
                 return ResponseEntity.badRequest().body(ApiResponse.error("school 不能为空"));
             }
             Long studentCnt = jdbcTemplate.queryForObject(
-                "SELECT COUNT(*) FROM checkuser.checkstudent WHERE school = ?", Long.class, school);
+                "SELECT COUNT(*) FROM checkuser1.checkstudent WHERE school = ?", Long.class, school);
             List<Map<String, Object>> preRows = jdbcTemplate.queryForList(
-                "SELECT school, college, teacherid, name FROM checkuser.checkteacher WHERE school = ? " +
+                "SELECT school, college, teacherid, name FROM checkuser1.checkteacher WHERE school = ? " +
                     "ORDER BY college, teacherid", school);
             List<Map<String, Object>> preimportList = new ArrayList<>();
             for (Map<String, Object> r : preRows) {
@@ -188,7 +188,7 @@ public class SchoolAccountController {
                 return ResponseEntity.badRequest().body(ApiResponse.error("该工号已注册"));
             }
             List<Map<String, Object>> found = jdbcTemplate.queryForList(
-                "SELECT college, name FROM checkuser.checkteacher WHERE school = ? AND teacherid = ? LIMIT 1",
+                "SELECT college, name FROM checkuser1.checkteacher WHERE school = ? AND teacherid = ? LIMIT 1",
                 school, teacherId);
             if (found.isEmpty()) {
                 return ResponseEntity.badRequest().body(ApiResponse.error("预导入表中无此教师记录"));
@@ -209,7 +209,7 @@ public class SchoolAccountController {
     }
 
     /**
-     * 不在预导入表中的教师：同时写入 users 与 checkuser.checkteacher
+     * 不在预导入表中的教师：同时写入 users 与 checkuser1.checkteacher
      */
     @PostMapping("/create-teacher-with-preimport")
     public ResponseEntity<ApiResponse<Map<String, Object>>> createTeacherWithPreimport(
@@ -232,12 +232,12 @@ public class SchoolAccountController {
                 return ResponseEntity.badRequest().body(ApiResponse.error("该工号已在系统中注册"));
             }
             Integer existsPre = jdbcTemplate.queryForObject(
-                "SELECT COUNT(*) FROM checkuser.checkteacher WHERE teacherid = ?", Integer.class, teacherId);
+                "SELECT COUNT(*) FROM checkuser1.checkteacher WHERE teacherid = ?", Integer.class, teacherId);
             if (existsPre != null && existsPre > 0) {
                 return ResponseEntity.badRequest().body(ApiResponse.error("该工号已在预导入表中，请使用「从预导入开户」"));
             }
             jdbcTemplate.update(
-                "INSERT INTO checkuser.checkteacher (school, college, teacherid, name) VALUES (?,?,?,?)",
+                "INSERT INTO checkuser1.checkteacher (school, college, teacherid, name) VALUES (?,?,?,?)",
                 school, blankToNull(college), teacherId, name);
             Map<String, Object> created = createUserAccount(name, teacherId, school, college, password, role);
             created.put("preimportInserted", true);
@@ -271,8 +271,8 @@ public class SchoolAccountController {
             }
             Integer schoolKnown = jdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM (" +
-                    "SELECT school FROM checkuser.checkstudent WHERE school = ? " +
-                    "UNION SELECT school FROM checkuser.checkteacher WHERE school = ?) t",
+                    "SELECT school FROM checkuser1.checkstudent WHERE school = ? " +
+                    "UNION SELECT school FROM checkuser1.checkteacher WHERE school = ?) t",
                 Integer.class, schoolName, schoolName);
             if (schoolKnown != null && schoolKnown > 0) {
                 return ResponseEntity.badRequest().body(ApiResponse.error("该校名在预导入库中已存在，请从「学校开户」进入操作"));
@@ -281,12 +281,12 @@ public class SchoolAccountController {
                 return ResponseEntity.badRequest().body(ApiResponse.error("该工号已注册"));
             }
             Integer tidUsed = jdbcTemplate.queryForObject(
-                "SELECT COUNT(*) FROM checkuser.checkteacher WHERE teacherid = ?", Integer.class, teacherId);
+                "SELECT COUNT(*) FROM checkuser1.checkteacher WHERE teacherid = ?", Integer.class, teacherId);
             if (tidUsed != null && tidUsed > 0) {
                 return ResponseEntity.badRequest().body(ApiResponse.error("该工号已在预导入表中使用"));
             }
             jdbcTemplate.update(
-                "INSERT INTO checkuser.checkteacher (school, college, teacherid, name) VALUES (?,?,?,?)",
+                "INSERT INTO checkuser1.checkteacher (school, college, teacherid, name) VALUES (?,?,?,?)",
                 schoolName, blankToNull(college), teacherId, realName);
             Map<String, Object> created = createUserAccount(
                 realName, teacherId, schoolName, college, password, User.UserType.school_admin);

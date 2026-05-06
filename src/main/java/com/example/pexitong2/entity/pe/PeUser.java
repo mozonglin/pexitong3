@@ -35,6 +35,9 @@ public class PeUser {
     @Column(name = "avatar", columnDefinition = "TEXT")
     private String avatar;
     
+    @Column(name = "gender", length = 10)
+    private String gender;
+    
     @Column(name = "points", nullable = false)
     private Integer points = 0;
     
@@ -114,6 +117,9 @@ public class PeUser {
     
     public String getAvatar() { return avatar; }
     public void setAvatar(String avatar) { this.avatar = avatar; }
+    
+    public String getGender() { return gender; }
+    public void setGender(String gender) { this.gender = gender; }
     
     public Integer getPoints() { return points; }
     public void setPoints(Integer points) { this.points = points; }

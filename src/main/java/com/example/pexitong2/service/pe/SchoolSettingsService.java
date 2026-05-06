@@ -30,4 +30,22 @@ public class SchoolSettingsService {
         settings.setSunshineRunDistance(distance);
         return schoolSettingsRepository.save(settings);
     }
+
+    @Transactional
+    public SchoolSettings updateSunshineRunSettings(String school,
+            Integer distanceMale, Integer distanceFemale,
+            Double paceMinMale, Double paceMaxMale,
+            Double paceMinFemale, Double paceMaxFemale) {
+        SchoolSettings settings = getOrCreateSettings(school);
+        if (distanceMale != null) settings.setSunshineRunDistanceMale(distanceMale);
+        if (distanceFemale != null) settings.setSunshineRunDistanceFemale(distanceFemale);
+        if (paceMinMale != null) settings.setSunshineRunPaceMinMale(paceMinMale);
+        if (paceMaxMale != null) settings.setSunshineRunPaceMaxMale(paceMaxMale);
+        if (paceMinFemale != null) settings.setSunshineRunPaceMinFemale(paceMinFemale);
+        if (paceMaxFemale != null) settings.setSunshineRunPaceMaxFemale(paceMaxFemale);
+        if (distanceMale != null && distanceFemale != null) {
+            settings.setSunshineRunDistance(Math.max(distanceMale, distanceFemale));
+        }
+        return schoolSettingsRepository.save(settings);
+    }
 }
