@@ -35,7 +35,8 @@ public class SchoolSettingsService {
     public SchoolSettings updateSunshineRunSettings(String school,
             Integer distanceMale, Integer distanceFemale,
             Double paceMinMale, Double paceMaxMale,
-            Double paceMinFemale, Double paceMaxFemale) {
+            Double paceMinFemale, Double paceMaxFemale,
+            Integer runsPerWeek, Integer totalWeeks) {
         SchoolSettings settings = getOrCreateSettings(school);
         if (distanceMale != null) settings.setSunshineRunDistanceMale(distanceMale);
         if (distanceFemale != null) settings.setSunshineRunDistanceFemale(distanceFemale);
@@ -43,6 +44,8 @@ public class SchoolSettingsService {
         if (paceMaxMale != null) settings.setSunshineRunPaceMaxMale(paceMaxMale);
         if (paceMinFemale != null) settings.setSunshineRunPaceMinFemale(paceMinFemale);
         if (paceMaxFemale != null) settings.setSunshineRunPaceMaxFemale(paceMaxFemale);
+        if (runsPerWeek != null) settings.setSunshineRunRunsPerWeek(Math.max(0, runsPerWeek));
+        if (totalWeeks != null) settings.setSunshineRunTotalWeeks(Math.max(1, totalWeeks));
         if (distanceMale != null && distanceFemale != null) {
             settings.setSunshineRunDistance(Math.max(distanceMale, distanceFemale));
         }

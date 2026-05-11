@@ -5,6 +5,7 @@ import com.example.pexitong2.entity.User;
 import com.example.pexitong2.repository.UserRepository;
 import com.example.pexitong2.service.pe.PeStatisticsService;
 import com.example.pexitong2.service.pe.PeStatsCacheService;
+import com.example.pexitong2.service.pe.SunshineRunWeeklyCompletionService;
 import com.example.pexitong2.util.JwtUtil;
 import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
@@ -31,6 +32,9 @@ public class PeStatisticsController {
 
     @Autowired
     private PeStatsCacheService peStatsCacheService;
+
+    @Autowired
+    private SunshineRunWeeklyCompletionService sunshineRunWeeklyCompletionService;
 
     @Autowired
     private JwtUtil jwtUtil;
@@ -143,12 +147,45 @@ public class PeStatisticsController {
         }
     }
 
+    /**
+     * 本周阳光跑完成率（按学校设置的每周跑步次数指标）。
+     * 校级/院级/辅导员仅看自己管辖范围；独立实现，不影响其他统计接口。
+     */
+    @GetMapping("/sunshine-run/weekly-completion")
+    public PeApiResponse<SunshineRunWeeklyCompletionResponse> getSunshineRunWeeklyCompletion(
+            @RequestHeader("Authorization") String token) {
+        try {
+            String userId = getCurrentUserId(token);
+            SunshineRunWeeklyCompletionResponse data = sunshineRunWeeklyCompletionService.buildForAdmin(userId);
+            return PeApiResponse.success("获取成功", data);
+        } catch (Exception e) {
+            return PeApiResponse.error(e.getMessage());
+        }
+    }
+
+    /**
+     * 各院系/各班级本周完成率；view=school 按学院，view=college 按班级（与阳光跑大屏一致）。
+     */
+    @GetMapping("/sunshine-run/weekly-completion-groups")
+    public PeApiResponse<SunshineRunWeeklyGroupsResponse> getSunshineRunWeeklyCompletionGroups(
+            @RequestHeader("Authorization") String token,
+            @RequestParam String view) {
+        try {
+            String userId = getCurrentUserId(token);
+            SunshineRunWeeklyGroupsResponse data = sunshineRunWeeklyCompletionService.buildGroupsForAdmin(userId, view);
+            return PeApiResponse.success("获取成功", data);
+        } catch (Exception e) {
+            return PeApiResponse.error(e.getMessage());
+        }
+    }
+
     // ── 阳光跑导出 Excel ──────────────────────────────────────────────────────
 
     @GetMapping("/sunshine-run/export")
     public ResponseEntity<byte[]> exportSunshineRun(
             @RequestHeader("Authorization") String token,
-            @RequestParam(required = false, defaultValue = "school") String scope) {
+            @RequestParam(required = false, defaultValue = "school") String scope,
+            @RequestParam(required = false) String period) {
         try {
             String currentUserId = getCurrentUserId(token);
             User admin = userRepository.findById(currentUserId)
@@ -161,25 +198,58 @@ public class PeStatisticsController {
             }
 
             String school = admin.getSchool();
-            String sql;
-            Object[] params;
+            boolean isDept = admin.getUserType() == User.UserType.department_admin
+                    && admin.getDepartmentName() != null && !admin.getDepartmentName().isBlank();
 
-            if (admin.getUserType() == User.UserType.department_admin
-                    && admin.getDepartmentName() != null && !admin.getDepartmentName().isBlank()) {
-                sql = "SELECT name, student_id, school, college, class_name, " +
-                      "sunshine_total_runs, sunshine_total_distance, sunshine_total_duration " +
-                      "FROM users1 WHERE school = ? AND college = ? AND role = 'STUDENT' " +
-                      "ORDER BY sunshine_total_distance DESC";
-                params = new Object[]{school, admin.getDepartmentName().trim()};
+            List<Map<String, Object>> rows;
+
+            if (hasPeriodFilter(period)) {
+                String dateFilter = getDateCondition("r.created_at", period);
+                String sql;
+                Object[] params;
+
+                if (isDept) {
+                    sql = "SELECT u.name, u.student_id, u.school, u.college, u.class_name, " +
+                          "COUNT(*) AS sunshine_total_runs, " +
+                          "COALESCE(SUM(r.total_distance), 0) AS sunshine_total_distance, " +
+                          "COALESCE(SUM(r.total_duration), 0) AS sunshine_total_duration " +
+                          "FROM sunshine_run_records r " +
+                          "JOIN users1 u ON u.id = r.user_id " +
+                          "WHERE u.school = ? AND u.college = ? AND u.role = 'STUDENT' AND " + dateFilter + " " +
+                          "GROUP BY u.id, u.name, u.student_id, u.school, u.college, u.class_name " +
+                          "ORDER BY sunshine_total_distance DESC";
+                    params = new Object[]{school, admin.getDepartmentName().trim()};
+                } else {
+                    sql = "SELECT u.name, u.student_id, u.school, u.college, u.class_name, " +
+                          "COUNT(*) AS sunshine_total_runs, " +
+                          "COALESCE(SUM(r.total_distance), 0) AS sunshine_total_distance, " +
+                          "COALESCE(SUM(r.total_duration), 0) AS sunshine_total_duration " +
+                          "FROM sunshine_run_records r " +
+                          "JOIN users1 u ON u.id = r.user_id " +
+                          "WHERE u.school = ? AND u.role = 'STUDENT' AND " + dateFilter + " " +
+                          "GROUP BY u.id, u.name, u.student_id, u.school, u.college, u.class_name " +
+                          "ORDER BY sunshine_total_distance DESC";
+                    params = new Object[]{school};
+                }
+                rows = jdbcTemplate.queryForList(sql, params);
             } else {
-                sql = "SELECT name, student_id, school, college, class_name, " +
-                      "sunshine_total_runs, sunshine_total_distance, sunshine_total_duration " +
-                      "FROM users1 WHERE school = ? AND role = 'STUDENT' " +
-                      "ORDER BY sunshine_total_distance DESC";
-                params = new Object[]{school};
+                String sql;
+                Object[] params;
+                if (isDept) {
+                    sql = "SELECT name, student_id, school, college, class_name, " +
+                          "sunshine_total_runs, sunshine_total_distance, sunshine_total_duration " +
+                          "FROM users1 WHERE school = ? AND college = ? AND role = 'STUDENT' " +
+                          "ORDER BY sunshine_total_distance DESC";
+                    params = new Object[]{school, admin.getDepartmentName().trim()};
+                } else {
+                    sql = "SELECT name, student_id, school, college, class_name, " +
+                          "sunshine_total_runs, sunshine_total_distance, sunshine_total_duration " +
+                          "FROM users1 WHERE school = ? AND role = 'STUDENT' " +
+                          "ORDER BY sunshine_total_distance DESC";
+                    params = new Object[]{school};
+                }
+                rows = jdbcTemplate.queryForList(sql, params);
             }
-
-            List<Map<String, Object>> rows = jdbcTemplate.queryForList(sql, params);
 
             for (Map<String, Object> row : rows) {
                 Object dist = row.get("sunshine_total_distance");
@@ -205,6 +275,17 @@ public class PeStatisticsController {
                     .body(bytes);
         } catch (Exception e) {
             return ResponseEntity.internalServerError().build();
+        }
+    }
+
+    private String getDateCondition(String column, String period) {
+        if (period == null || period.isBlank()) return "1=1";
+        switch (period.toLowerCase()) {
+            case "today":       return column + " >= CURDATE() AND " + column + " < CURDATE() + INTERVAL 1 DAY";
+            case "week":        return column + " >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)";
+            case "month":       return column + " >= DATE_SUB(CURDATE(), INTERVAL 1 MONTH)";
+            case "four_months": return column + " >= DATE_SUB(CURDATE(), INTERVAL 4 MONTH)";
+            default:            return "1=1";
         }
     }
 

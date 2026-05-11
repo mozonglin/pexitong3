@@ -391,7 +391,7 @@ public class HomeworkStatisticsController {
         try {
             String effectivePeriod = "month";
             if (hasPeriodFilter(period)) {
-                if ("today".equals(period) || "week".equals(period) || "month".equals(period)) {
+                if ("today".equals(period) || "week".equals(period) || "month".equals(period) || "four_months".equals(period)) {
                     effectivePeriod = period;
                 }
             }

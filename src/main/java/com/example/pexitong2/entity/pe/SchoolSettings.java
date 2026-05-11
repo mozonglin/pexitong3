@@ -38,6 +38,12 @@ public class SchoolSettings {
     @Column(name = "sunshine_run_pace_max_female")
     private Double sunshineRunPaceMaxFemale;
 
+    @Column(name = "sunshine_run_runs_per_week")
+    private Integer sunshineRunRunsPerWeek = 3;
+
+    @Column(name = "sunshine_run_total_weeks")
+    private Integer sunshineRunTotalWeeks = 16;
+
     @Column(name = "class_selection_max")
     private Integer classSelectionMax = 1;
 
@@ -77,6 +83,12 @@ public class SchoolSettings {
 
     public Double getSunshineRunPaceMaxFemale() { return sunshineRunPaceMaxFemale; }
     public void setSunshineRunPaceMaxFemale(Double sunshineRunPaceMaxFemale) { this.sunshineRunPaceMaxFemale = sunshineRunPaceMaxFemale; }
+
+    public Integer getSunshineRunRunsPerWeek() { return sunshineRunRunsPerWeek; }
+    public void setSunshineRunRunsPerWeek(Integer sunshineRunRunsPerWeek) { this.sunshineRunRunsPerWeek = sunshineRunRunsPerWeek; }
+
+    public Integer getSunshineRunTotalWeeks() { return sunshineRunTotalWeeks; }
+    public void setSunshineRunTotalWeeks(Integer sunshineRunTotalWeeks) { this.sunshineRunTotalWeeks = sunshineRunTotalWeeks; }
 
     public Integer getClassSelectionMax() { return classSelectionMax; }
     public void setClassSelectionMax(Integer classSelectionMax) { this.classSelectionMax = classSelectionMax; }
