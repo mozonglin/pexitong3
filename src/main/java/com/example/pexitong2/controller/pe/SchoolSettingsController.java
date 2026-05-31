@@ -7,6 +7,8 @@ import com.example.pexitong2.repository.pe.HomeworkExerciseStandardRepository;
 import com.example.pexitong2.service.pe.SchoolSettingsService;
 import com.example.pexitong2.util.JwtUtil;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -94,6 +96,65 @@ public class SchoolSettingsController {
         } catch (Exception e) {
             return ApiResponse.error(500, e.getMessage());
         }
+    }
+
+    @PutMapping("/homework-submission-settings")
+    public ResponseEntity<ApiResponse<SchoolSettings>> updateHomeworkSubmissionSettings(
+            @RequestBody Map<String, Object> body,
+            @RequestHeader(value = "Authorization", required = false) String authHeader) {
+        try {
+            if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                        .body(ApiResponse.error(401, "未提供有效的授权令牌"));
+            }
+            String token = authHeader.substring(7);
+            String userType = jwtUtil.extractUserType(token);
+
+            if (!"school_admin".equals(userType) && !"super_admin".equals(userType)) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                        .body(ApiResponse.error(403, "权限不足：仅校级管理员或超级管理员可操作"));
+            }
+
+            Object schoolObj = body.get("school");
+            String school = schoolObj instanceof String ? (String) schoolObj : schoolObj != null ? String.valueOf(schoolObj).trim() : null;
+            if (school == null || school.isBlank()) {
+                return ResponseEntity.badRequest().body(ApiResponse.error(400, "school 不能为空"));
+            }
+
+            Integer weeklyRequired = bodyInt(body, "weeklySubmissionsRequired");
+            Integer semesterWeeks = bodyInt(body, "submissionSemesterWeeks");
+
+            SchoolSettings settings = schoolSettingsService.updateHomeworkSubmissionSettings(
+                    school, weeklyRequired, semesterWeeks);
+            return ResponseEntity.ok(ApiResponse.success("更新成功", settings));
+        } catch (Exception e) {
+            String msg = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(ApiResponse.error(500, msg));
+        }
+    }
+
+    /** 兼容 JSON 中数字或字符串形式的整型字段。 */
+    private static Integer bodyInt(Map<String, Object> body, String key) {
+        Object v = body.get(key);
+        if (v == null) {
+            return null;
+        }
+        if (v instanceof Number n) {
+            return n.intValue();
+        }
+        if (v instanceof String s) {
+            String t = s.trim();
+            if (t.isEmpty()) {
+                return null;
+            }
+            try {
+                return Integer.parseInt(t);
+            } catch (NumberFormatException e) {
+                return null;
+            }
+        }
+        return null;
     }
 
     @GetMapping("/homework-standards")

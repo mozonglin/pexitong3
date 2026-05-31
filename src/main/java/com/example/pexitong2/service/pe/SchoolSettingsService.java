@@ -51,4 +51,17 @@ public class SchoolSettingsService {
         }
         return schoolSettingsRepository.save(settings);
     }
+
+    @Transactional
+    public SchoolSettings updateHomeworkSubmissionSettings(String school,
+            Integer weeklySubmissionsRequired, Integer submissionSemesterWeeks) {
+        SchoolSettings settings = getOrCreateSettings(school);
+        if (weeklySubmissionsRequired != null) {
+            settings.setHomeworkWeeklySubmissionsRequired(Math.max(0, weeklySubmissionsRequired));
+        }
+        if (submissionSemesterWeeks != null) {
+            settings.setHomeworkSubmissionSemesterWeeks(Math.max(1, submissionSemesterWeeks));
+        }
+        return schoolSettingsRepository.save(settings);
+    }
 }

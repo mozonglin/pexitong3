@@ -1,7 +1,10 @@
 package com.example.pexitong2.controller;
 
 import com.example.pexitong2.dto.ApiResponse;
+import com.example.pexitong2.dto.HomeworkWeeklySubmissionCompletionResponse;
+import com.example.pexitong2.dto.HomeworkWeeklySubmissionGroupsResponse;
 import com.example.pexitong2.service.HomeworkStatsCacheService;
+import com.example.pexitong2.service.HomeworkWeeklySubmissionCompletionService;
 import com.example.pexitong2.util.JwtUtil;
 import jakarta.servlet.http.HttpServletRequest;
 import org.apache.poi.ss.usermodel.*;
@@ -40,6 +43,9 @@ public class HomeworkStatisticsController {
 
     @Autowired
     private HomeworkStatsCacheService cacheService;
+
+    @Autowired
+    private HomeworkWeeklySubmissionCompletionService homeworkWeeklySubmissionCompletionService;
 
     // ── 内部辅助：从 Token 解析管理员信息 ────────────────────────────────────────
 
@@ -422,6 +428,41 @@ public class HomeworkStatisticsController {
                     .body(bytes);
         } catch (Exception e) {
             return ResponseEntity.internalServerError().build();
+        }
+    }
+
+    /**
+     * 本周课后作业「提交次数」整体达标率（homework_scores 行数，全项目合计）；独立统计，不影响其它接口。
+     */
+    @GetMapping("/weekly-submission-completion")
+    public ResponseEntity<ApiResponse<HomeworkWeeklySubmissionCompletionResponse>> getWeeklySubmissionCompletion(
+            HttpServletRequest request) {
+        try {
+            HomeworkWeeklySubmissionCompletionResponse data = homeworkWeeklySubmissionCompletionService.buildOverall(request);
+            return ResponseEntity.ok(ApiResponse.success("获取成功", data));
+        } catch (SecurityException e) {
+            return ResponseEntity.status(403).body(ApiResponse.error(e.getMessage()));
+        } catch (Exception e) {
+            return ResponseEntity.internalServerError().body(ApiResponse.error(e.getMessage()));
+        }
+    }
+
+    /**
+     * 各院系/班级本周提交达标率；view=school 按 college，view=college 按 class_name+college。
+     */
+    @GetMapping("/weekly-submission-completion-groups")
+    public ResponseEntity<ApiResponse<HomeworkWeeklySubmissionGroupsResponse>> getWeeklySubmissionCompletionGroups(
+            HttpServletRequest request,
+            @RequestParam String view) {
+        try {
+            HomeworkWeeklySubmissionGroupsResponse data = homeworkWeeklySubmissionCompletionService.buildGroups(request, view);
+            return ResponseEntity.ok(ApiResponse.success("获取成功", data));
+        } catch (SecurityException e) {
+            return ResponseEntity.status(403).body(ApiResponse.error(e.getMessage()));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(ApiResponse.error(e.getMessage()));
+        } catch (Exception e) {
+            return ResponseEntity.internalServerError().body(ApiResponse.error(e.getMessage()));
         }
     }
 

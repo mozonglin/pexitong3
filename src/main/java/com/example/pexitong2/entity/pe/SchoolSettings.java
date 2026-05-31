@@ -44,6 +44,12 @@ public class SchoolSettings {
     @Column(name = "sunshine_run_total_weeks")
     private Integer sunshineRunTotalWeeks = 16;
 
+    @Column(name = "homework_weekly_submissions_required")
+    private Integer homeworkWeeklySubmissionsRequired = 3;
+
+    @Column(name = "homework_submission_semester_weeks")
+    private Integer homeworkSubmissionSemesterWeeks = 16;
+
     @Column(name = "class_selection_max")
     private Integer classSelectionMax = 1;
 
@@ -89,6 +95,16 @@ public class SchoolSettings {
 
     public Integer getSunshineRunTotalWeeks() { return sunshineRunTotalWeeks; }
     public void setSunshineRunTotalWeeks(Integer sunshineRunTotalWeeks) { this.sunshineRunTotalWeeks = sunshineRunTotalWeeks; }
+
+    public Integer getHomeworkWeeklySubmissionsRequired() { return homeworkWeeklySubmissionsRequired; }
+    public void setHomeworkWeeklySubmissionsRequired(Integer homeworkWeeklySubmissionsRequired) {
+        this.homeworkWeeklySubmissionsRequired = homeworkWeeklySubmissionsRequired;
+    }
+
+    public Integer getHomeworkSubmissionSemesterWeeks() { return homeworkSubmissionSemesterWeeks; }
+    public void setHomeworkSubmissionSemesterWeeks(Integer homeworkSubmissionSemesterWeeks) {
+        this.homeworkSubmissionSemesterWeeks = homeworkSubmissionSemesterWeeks;
+    }
 
     public Integer getClassSelectionMax() { return classSelectionMax; }
     public void setClassSelectionMax(Integer classSelectionMax) { this.classSelectionMax = classSelectionMax; }
